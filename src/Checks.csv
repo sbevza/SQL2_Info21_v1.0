@@ -1,10 +1,10 @@
-1,john,Task 1,2023-01-10  
-2,bob,Task 2,2023-01-11
-3,alice,Task 3,2023-01-12
-4,mike,Task 4,2023-01-13
-5,kate,Task 5,2023-01-14
-6,chris,Task 1,2023-01-15
-7,lisa,Task 2,2023-01-16
-8,tom,Task 3,2023-01-17
-9,nick,Task 4,2023-01-18 
-10,jess,Task 5,2023-01-19
+1,john,C2_SimpleBashUtils,2023-09-11
+2,bob,C3_S21_String+,2023-09-12
+3,alice,C4_S21_Math,2023-09-13
+4,mike,C5_S21_Decimal,2023-09-14
+5,kate,C6_S21_Matrix,2023-09-15
+6,chris,C7_SmartCalc_V1.0,2023-09-16
+7,lisa,C8_3DViewer_V1.0,2023-09-17
+8,tom,D01_Linux,2023-09-18
+9,nick,D02_LinuxNetwork,2023-09-19
+10,jess,D03_LinuxMonitoring_V1.0,2023-09-20

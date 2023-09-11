@@ -17,9 +17,20 @@ CREATE TABLE IF NOT EXISTS Tasks
     Title      VARCHAR PRIMARY KEY NOT NULL,
     ParentTask VARCHAR,
     MaxXP      INT                 NOT NULL CHECK (MaxXP > 0),
-    CONSTRAINT fk_tasks_parent_task FOREIGN KEY (ParentTask) REFERENCES Tasks (Title),
+--     CONSTRAINT fk_tasks_parent_task FOREIGN KEY (ParentTask) REFERENCES Tasks (Title),
     CONSTRAINT unique_pair CHECK (ParentTask != Title)
 );
+
+DO
+$$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_tasks_parent_task') THEN
+            ALTER TABLE Tasks
+                ADD CONSTRAINT fk_tasks_parent_task
+                    FOREIGN KEY (ParentTask) REFERENCES Tasks(Title);
+        END IF;
+    END
+$$;
 
 CREATE OR REPLACE FUNCTION fun_trg_check_unique_null_parent_task()
     RETURNS TRIGGER AS
@@ -32,6 +43,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
 
 CREATE TRIGGER trg_check_unique_null_parent_task
     BEFORE INSERT OR UPDATE
@@ -50,15 +62,16 @@ $$
 $$;
 
 -- Создаем таблицу Checks
-CREATE TABLE Checks
+CREATE TABLE IF NOT EXISTS Checks
 (
-    ID   SERIAL PRIMARY KEY,
+    ID SERIAL PRIMARY KEY,
     Peer VARCHAR NOT NULL,
     Task VARCHAR NOT NULL,
-    Date DATE    NOT NULL,
+    Date DATE NOT NULL,
     CONSTRAINT fk_checks_peer_peer FOREIGN KEY (Peer) REFERENCES Peers (Nickname),
     CONSTRAINT fk_checks_task FOREIGN KEY (Task) REFERENCES Tasks (Title)
 );
+
 
 -- Создаем таблицу P2P
 CREATE TABLE IF NOT EXISTS P2P
@@ -100,6 +113,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
 
 CREATE OR REPLACE TRIGGER trg_p2p_check_state
     BEFORE INSERT
@@ -292,20 +306,26 @@ EXECUTE FUNCTION fun_trg_xp_tracking_check_state();
 
 -- Процедура импорта данных в таблицу Peers
 CREATE OR REPLACE FUNCTION import_from_csv(
+    tablename text,
     filename text,
-    delimiter char DEFAULT ','
+    delimiter text DEFAULT ','
 )
     RETURNS void
     LANGUAGE plpgsql
 AS
 $$
 BEGIN
-    EXECUTE format('COPY %I FROM %L WITH CSV HEADER DELIMITER %L',
-                   substring(filename from '[^.]+'),
-                   filename,
-                   delimiter);
+    EXECUTE format('COPY %I FROM %L WITH CSV DELIMITER %L', tablename, filename, delimiter);
 END;
 $$;
+
+
+
+
+
+
+
+
 
 CREATE OR REPLACE FUNCTION export_to_csv(
     filename text,
@@ -317,7 +337,7 @@ AS
 $$
 BEGIN
     EXECUTE format(
-            'COPY %I TO %L WITH CSV HEADER DELIMITER %L',
+            'COPY %I TO %L WITH CSV DELIMITER %L',
             substring(filename from '[^.]+'),
             filename,
             delimiter
@@ -327,6 +347,32 @@ $$;
 
 -- Использование:
 
--- SELECT export_to_csv('peers.csv', '|');
--- SELECT import_from_csv('peers.csv', '|');
+SELECT import_from_csv(
+               'peers',
+               '/Users/amazomic/SQL2_Info21_v1.0-1/src/peers.csv'
+           );
 
+SELECT import_from_csv(
+               'tasks',
+               '/Users/amazomic/SQL2_Info21_v1.0-1/src/Tasks.csv'
+           );
+
+
+SELECT import_from_csv(
+               'checks',
+               '/Users/amazomic/SQL2_Info21_v1.0-1/src/Checks.csv'
+           );
+
+SELECT import_from_csv(
+               'p2p',
+               '/Users/amazomic/SQL2_Info21_v1.0-1/src/P2P.csv'
+           );
+
+
+
+-- INSERT INTO Tasks (Title, ParentTask, MaxXP)
+-- VALUES ('C2_SimpleBashUtils','Math Homework 1', 15);
+
+
+COPY Checks (Peer, Task, Date) FROM '/Users/amazomic/SQL2_Info21_v1.0-1/src/Checks.csv' WITH CSV DELIMITER ',';
+COPY Checks FROM '/Users/amazomic/SQL2_Info21_v1.0-1/src/Checks.csv' WITH CSV HEADER DELIMITER ',';

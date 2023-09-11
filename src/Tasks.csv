@@ -1,10 +1,10 @@
-1,Task 1,,500 
-2,Task 2,Task 1,300
-3,Task 3,,400
-4,Task 4,Task 2,250
-5,Task 5,Task 3,150
-6,Task 6,,350
-7,Task 7,Task 6,200
-8,Task 8,,450
-9,Task 9,Task 8,350
-10,Task 10,,290
+C2_SimpleBashUtils,,250
+C3_S21_String+,C2_SimpleBashUtils,500
+C4_S21_Math,C3_S21_String+,300
+C5_S21_Decimal,C4_S21_Math,350
+C6_S21_Matrix,C5_S21_Decimal,200
+C7_SmartCalc_V1.0,C6_S21_Matrix,500
+C8_3DViewer_V1.0,C7_SmartCalc_V1.0,750
+D01_Linux,C3_S21_String+,300
+D02_LinuxNetwork,D01_Linux,250
+D03_LinuxMonitoring_V1.0,D02_LinuxNetwork,350
