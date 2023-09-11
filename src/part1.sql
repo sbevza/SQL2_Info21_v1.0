@@ -16,10 +16,28 @@ CREATE TABLE IF NOT EXISTS Tasks
 (
     Title      VARCHAR PRIMARY KEY NOT NULL,
     ParentTask VARCHAR,
-    MaxXP      INT                 NOT NULL,
+    MaxXP      INT                 NOT NULL CHECK (MaxXP > 0),
     CONSTRAINT fk_tasks_parent_task FOREIGN KEY (ParentTask) REFERENCES Tasks (Title),
     CONSTRAINT unique_pair CHECK (ParentTask != Title)
 );
+
+CREATE OR REPLACE FUNCTION fun_trg_check_unique_null_parent_task()
+    RETURNS TRIGGER AS
+$$
+BEGIN
+    IF NEW.ParentTask IS NULL AND
+       EXISTS (SELECT 1 FROM Tasks WHERE ParentTask IS NULL AND Title != NEW.Title) THEN
+        RAISE EXCEPTION 'ParentTask with NULL value already exists';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_check_unique_null_parent_task
+    BEFORE INSERT OR UPDATE
+    ON Tasks
+    FOR EACH ROW
+EXECUTE FUNCTION fun_trg_check_unique_null_parent_task();
 
 -- Создаем тип enum для статуса проверки
 DO
@@ -38,8 +56,8 @@ CREATE TABLE Checks
     Peer VARCHAR NOT NULL,
     Task VARCHAR NOT NULL,
     Date DATE    NOT NULL,
-    CONSTRAINT fk_checks_peer_nickname FOREIGN KEY (Peer) REFERENCES Peers (Nickname),
-    CONSTRAINT fk_checks_task_title FOREIGN KEY (Task) REFERENCES Tasks (Title)
+    CONSTRAINT fk_checks_peer_peer FOREIGN KEY (Peer) REFERENCES Peers (Nickname),
+    CONSTRAINT fk_checks_task FOREIGN KEY (Task) REFERENCES Tasks (Title)
 );
 
 -- Создаем таблицу P2P
@@ -50,9 +68,44 @@ CREATE TABLE IF NOT EXISTS P2P
     CheckingPeer VARCHAR      NOT NULL,
     State        check_status NOT NULL,
     Time         TIME         NOT NULL,
-    CONSTRAINT fk_p2p_check_id FOREIGN KEY ("Check") REFERENCES Checks (ID),
-    CONSTRAINT fk_p2p_checking_peer_nickname FOREIGN KEY (CheckingPeer) REFERENCES Peers (Nickname)
+    CONSTRAINT fk_p2p_check FOREIGN KEY ("Check") REFERENCES Checks (ID),
+    CONSTRAINT fk_p2p_checking_peer FOREIGN KEY (CheckingPeer) REFERENCES Peers (Nickname)
 );
+
+CREATE OR REPLACE FUNCTION fnc_trg_p2p_check_state() RETURNS TRIGGER AS
+$$
+BEGIN
+    IF NEW.State = 'Start' THEN
+        IF EXISTS (SELECT 1
+                   FROM P2P
+                   WHERE State = 'Start'
+                     AND "Check" = NEW."Check") THEN
+            RAISE EXCEPTION 'The check already has started';
+        END IF;
+    END IF;
+    IF NEW.State IN ('Success', 'Failure') THEN
+        IF NOT EXISTS (SELECT 1
+                       FROM P2P
+                       WHERE State = 'Start'
+                         AND "Check" = NEW."Check") THEN
+            RAISE EXCEPTION 'The check has not started yet';
+        END IF;
+        IF (SELECT COUNT("Check")
+            FROM P2P
+            WHERE "Check" = NEW."Check") >= 2
+        THEN
+            RAISE EXCEPTION 'The check has ended yet';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER trg_p2p_check_state
+    BEFORE INSERT
+    ON P2P
+    FOR EACH ROW
+EXECUTE FUNCTION fnc_trg_p2p_check_state();
 
 -- Создаем таблицу Verter 
 CREATE TABLE IF NOT EXISTS Verter
@@ -61,8 +114,50 @@ CREATE TABLE IF NOT EXISTS Verter
     "Check" BIGINT       NOT NULL,
     State   check_status NOT NULL,
     Time    TIME         NOT NULL,
-    CONSTRAINT fk_verter_check_id FOREIGN KEY ("Check") REFERENCES Checks (ID)
+    CONSTRAINT fk_verter_check FOREIGN KEY ("Check") REFERENCES Checks (ID)
 );
+
+CREATE OR REPLACE FUNCTION fnc_trg_verter_check_state() RETURNS TRIGGER AS
+$$
+BEGIN
+    IF NEW.State = 'Start' THEN
+        IF EXISTS (SELECT 1
+                   FROM Verter
+                   WHERE State = 'Start'
+                     AND "Check" = NEW."Check") THEN
+            RAISE EXCEPTION 'The check already has started';
+        END IF;
+        IF NOT EXISTS (SELECT 1
+                       FROM P2P
+                       WHERE "Check" = NEW."Check"
+                         AND State = 'Success')
+        THEN
+            RAISE EXCEPTION 'The check has not been ended successfully';
+        END IF;
+    END IF;
+    IF NEW.State IN ('Success', 'Failure') THEN
+        IF NOT EXISTS (SELECT 1
+                       FROM Verter
+                       WHERE State = 'Start'
+                         AND "Check" = NEW."Check") THEN
+            RAISE EXCEPTION 'The check has not started yet';
+        END IF;
+        IF (SELECT COUNT("Check")
+            FROM Verter
+            WHERE "Check" = NEW."Check") >= 2
+        THEN
+            RAISE EXCEPTION 'The check has ended yet';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_verter_check_state
+    BEFORE INSERT
+    ON P2P
+    FOR EACH ROW
+EXECUTE FUNCTION fnc_trg_verter_check_state();
 
 -- Создаем таблицу TransferredPoints
 CREATE TABLE IF NOT EXISTS TransferredPoints
@@ -70,47 +165,129 @@ CREATE TABLE IF NOT EXISTS TransferredPoints
     ID           SERIAL PRIMARY KEY,
     CheckingPeer VARCHAR NOT NULL,
     CheckedPeer  VARCHAR NOT NULL,
-    PointsAmount INT     NOT NULL,
-    CONSTRAINT fk_transferred_points_checking_peer_nickname
+    PointsAmount INT     NOT NULL DEFAULT 1,
+    CONSTRAINT fk_transferred_points_checking_peer
         FOREIGN KEY (CheckingPeer) REFERENCES Peers (Nickname),
-    CONSTRAINT fk_transferred_points_checked_peer_nickname
-        FOREIGN KEY (CheckedPeer) REFERENCES Peers (Nickname)
+    CONSTRAINT fk_transferred_points_checked_peer
+        FOREIGN KEY (CheckedPeer) REFERENCES Peers (Nickname),
+    CONSTRAINT ch_transferred_points_peers check (CheckingPeer <> CheckedPeer)
 );
 
+CREATE OR REPLACE FUNCTION fun_trg_set_points_amount()
+    RETURNS TRIGGER AS
+$$
+BEGIN
+    NEW.PointsAmount := 1;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_set_points_amount
+    BEFORE INSERT OR UPDATE
+    ON TransferredPoints
+    FOR EACH ROW
+EXECUTE FUNCTION fun_trg_set_points_amount();
+
 -- Создаем таблицу Friends
-CREATE TABLE Friends
+CREATE TABLE IF NOT EXISTS Friends
 (
-    id    SERIAL PRIMARY KEY,
-    peer1 VARCHAR     NOT NULL,
-    peer2 VARCHAR(50) NOT NULL
+    ID    SERIAL PRIMARY KEY,
+    Peer1 VARCHAR NOT NULL,
+    Peer2 VARCHAR NOT NULL,
+    CONSTRAINT fk_friends_peer1 FOREIGN KEY (Peer1) REFERENCES Peers (Nickname),
+    CONSTRAINT fk_friends_peer2 FOREIGN KEY (Peer2) REFERENCES Peers (Nickname),
+    CONSTRAINT ch_friends_peers check (Peer1 <> Peer2)
 );
 
 -- Создаем таблицу Recommendations  
-CREATE TABLE Recommendations
+CREATE TABLE IF NOT EXISTS Recommendations
 (
-    id               SERIAL PRIMARY KEY,
-    peer             VARCHAR(50) NOT NULL,
-    recommended_peer VARCHAR(50) NOT NULL
+    ID              SERIAL PRIMARY KEY,
+    Peer            VARCHAR NOT NULL,
+    RecommendedPeer VARCHAR,
+    CONSTRAINT fk_recommendations_peer FOREIGN KEY (Peer) REFERENCES Peers (Nickname),
+    CONSTRAINT fk_recommendations_recommended_peer FOREIGN KEY (RecommendedPeer) REFERENCES Peers (Nickname),
+    CONSTRAINT ch_recommendations_peers CHECK (Peer <> RecommendedPeer)
+--     CONSTRAINT uk_recommendations_person_recommended_peer CHECK (
+--             Peer NOT IN (SELECT unnest(string_to_array(RecommendedPeer, ', '))))
 );
 
 -- Создаем таблицу XP
-CREATE TABLE XP
+CREATE TABLE IF NOT EXISTS XP
 (
-    id        SERIAL PRIMARY KEY,
-    check_id  INT NOT NULL,
-    xp_amount INT NOT NULL
+    ID       SERIAL PRIMARY KEY,
+    "Check"  INT NOT NULL,
+    XPAmount INT NOT NULL CHECK (XPAmount > 0)
 );
+
+CREATE OR REPLACE FUNCTION fun_trg_xp_check_xp_amount()
+    RETURNS TRIGGER AS
+$$
+BEGIN
+    IF (SELECT t.MaxXP
+        FROM Checks ch
+                 LEFT JOIN Tasks t on ch.Task = t.Title
+        WHERE ch.ID = NEW."Check") >= NEW.XPAmount
+    THEN
+        RAISE EXCEPTION 'XPAmount exceeds the maximum allowed for this check';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_xp_check_xp_amount
+    BEFORE INSERT OR UPDATE
+    ON XP
+    FOR EACH ROW
+EXECUTE FUNCTION fun_trg_xp_check_xp_amount();
 
 -- Создаем таблицу TimeTracking
 CREATE TABLE TimeTracking
 (
-    id    SERIAL PRIMARY KEY,
-    peer  VARCHAR(50) NOT NULL,
-    date  DATE        NOT NULL,
-    time  TIME        NOT NULL,
-    state INT         NOT NULL
+    ID    SERIAL PRIMARY KEY,
+    Peer  VARCHAR NOT NULL,
+    Date  DATE    NOT NULL,
+    Time  TIME    NOT NULL,
+    State INT     NOT NULL CHECK (State IN (1, 2)),
+    CONSTRAINT fk_time_tracking FOREIGN KEY (Peer) REFERENCES Peers (Nickname)
 );
 
+CREATE OR REPLACE FUNCTION fun_trg_xp_tracking_check_state()
+    RETURNS TRIGGER AS
+$$
+DECLARE
+    last_state INT;
+BEGIN
+    SELECT State
+    INTO last_state
+    FROM TimeTracking
+    WHERE Peer = NEW.Peer
+      AND Date = NEW.Date
+    ORDER BY ID DESC
+    LIMIT 1;
+
+    IF NEW.State = 1 THEN
+        IF last_state IS NULL OR last_state = 2 THEN
+            RETURN NEW;
+        ELSE
+            RAISE EXCEPTION 'Invalid State transition: Entry without Exit';
+        END IF;
+    ELSIF NEW.State = 2 THEN
+        IF last_state = 1 THEN
+            RETURN NEW;
+        ELSE
+            RAISE EXCEPTION 'Invalid State transition: Exit without Entry';
+        END IF;
+    END IF;
+    RAISE EXCEPTION 'Invalid State transition';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER trg_time_tracking_check_state
+    BEFORE INSERT
+    ON TimeTracking
+    FOR EACH ROW
+EXECUTE FUNCTION fun_trg_xp_tracking_check_state();
 -----------------------------------------------------------
 
 -- Процедура импорта данных в таблицу Peers
