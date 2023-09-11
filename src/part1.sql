@@ -222,8 +222,6 @@ CREATE TABLE IF NOT EXISTS Recommendations
     CONSTRAINT fk_recommendations_peer FOREIGN KEY (Peer) REFERENCES Peers (Nickname),
     CONSTRAINT fk_recommendations_recommended_peer FOREIGN KEY (RecommendedPeer) REFERENCES Peers (Nickname),
     CONSTRAINT ch_recommendations_peers CHECK (Peer <> RecommendedPeer)
---     CONSTRAINT uk_recommendations_person_recommended_peer CHECK (
---             Peer NOT IN (SELECT unnest(string_to_array(RecommendedPeer, ', '))))
 );
 
 -- Создаем таблицу XP
@@ -241,7 +239,7 @@ BEGIN
     IF (SELECT t.MaxXP
         FROM Checks ch
                  LEFT JOIN Tasks t on ch.Task = t.Title
-        WHERE ch.ID = NEW."Check") >= NEW.XPAmount
+        WHERE ch.ID = NEW."Check") <= NEW.XPAmount
     THEN
         RAISE EXCEPTION 'XPAmount exceeds the maximum allowed for this check';
     END IF;
@@ -328,6 +326,7 @@ $$;
 
 
 CREATE OR REPLACE FUNCTION export_to_csv(
+    tablename text,
     filename text,
     delimiter char DEFAULT ','
 )
@@ -338,12 +337,13 @@ $$
 BEGIN
     EXECUTE format(
             'COPY %I TO %L WITH CSV DELIMITER %L',
-            substring(filename from '[^.]+'),
+            tablename,
             filename,
             delimiter
         );
 END;
 $$;
+
 
 -- Использование:
 
@@ -368,11 +368,49 @@ SELECT import_from_csv(
                '/Users/amazomic/SQL2_Info21_v1.0-1/src/P2P.csv'
            );
 
+SELECT import_from_csv(
+               'verter',
+               '/Users/amazomic/SQL2_Info21_v1.0-1/src/Verter.csv'
+           );
 
+SELECT import_from_csv(
+               'transferredpoints',
+               '/Users/amazomic/SQL2_Info21_v1.0-1/src/TransferredPoints.csv'
+           );
+
+
+SELECT import_from_csv(
+               'friends',
+               '/Users/amazomic/SQL2_Info21_v1.0-1/src/Friends.csv'
+           );
+
+SELECT import_from_csv(
+               'recommendations',
+               '/Users/amazomic/SQL2_Info21_v1.0-1/src/Recommendations.csv'
+           );
+
+SELECT import_from_csv(
+               'xp',
+               '/Users/amazomic/SQL2_Info21_v1.0-1/src/XP.csv'
+           );
+
+SELECT import_from_csv(
+               'timetracking',
+               '/Users/amazomic/SQL2_Info21_v1.0-1/src/TimeTracking.csv'
+           );
+
+-- SELECT export_to_csv(
+--                'timetracking',
+--                '/Users/amazomic/SQL2_Info21_v1.0-1/src/TimeTracking1.csv'
+--            );
+--
+-- SELECT export_to_csv(
+--                'xp',
+--                '/Users/amazomic/SQL2_Info21_v1.0-1/src/XP1.csv'
+--            );
 
 -- INSERT INTO Tasks (Title, ParentTask, MaxXP)
 -- VALUES ('C2_SimpleBashUtils','Math Homework 1', 15);
 
 
-COPY Checks (Peer, Task, Date) FROM '/Users/amazomic/SQL2_Info21_v1.0-1/src/Checks.csv' WITH CSV DELIMITER ',';
-COPY Checks FROM '/Users/amazomic/SQL2_Info21_v1.0-1/src/Checks.csv' WITH CSV HEADER DELIMITER ',';
+
