@@ -24,10 +24,12 @@ CREATE TABLE IF NOT EXISTS Tasks
 DO
 $$
     BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_tasks_parent_task') THEN
+        IF NOT EXISTS (SELECT 1
+                       FROM information_schema.table_constraints
+                       WHERE constraint_name = 'fk_tasks_parent_task') THEN
             ALTER TABLE Tasks
                 ADD CONSTRAINT fk_tasks_parent_task
-                    FOREIGN KEY (ParentTask) REFERENCES Tasks(Title);
+                    FOREIGN KEY (ParentTask) REFERENCES Tasks (Title);
         END IF;
     END
 $$;
@@ -64,10 +66,10 @@ $$;
 -- Создаем таблицу Checks
 CREATE TABLE IF NOT EXISTS Checks
 (
-    ID SERIAL PRIMARY KEY,
+    ID   SERIAL PRIMARY KEY,
     Peer VARCHAR NOT NULL,
     Task VARCHAR NOT NULL,
-    Date DATE NOT NULL,
+    Date DATE    NOT NULL,
     CONSTRAINT fk_checks_peer_peer FOREIGN KEY (Peer) REFERENCES Peers (Nickname),
     CONSTRAINT fk_checks_task FOREIGN KEY (Task) REFERENCES Tasks (Title)
 );
@@ -337,7 +339,6 @@ BEGIN
 END;
 $$;
 
-
 -- Использование:
 
 SELECT import_from_csv(
@@ -366,13 +367,10 @@ SELECT import_from_csv(
                '/tmp/Verter.csv'
            );
 
-
-
 SELECT import_from_csv(
                'transferredpoints',
                '/Users/amazomic/SQL2_Info21_v1.0-1/src/TransferredPoints.csv'
            );
-
 
 SELECT import_from_csv(
                'friends',
