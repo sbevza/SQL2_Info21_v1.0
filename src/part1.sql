@@ -169,7 +169,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_verter_check_state
     BEFORE INSERT
-    ON P2P
+    ON Verter
     FOR EACH ROW
 EXECUTE FUNCTION fnc_trg_verter_check_state();
 
@@ -318,13 +318,6 @@ END;
 $$;
 
 
-
-
-
-
-
-
-
 CREATE OR REPLACE FUNCTION export_to_csv(
     tablename text,
     filename text,
@@ -349,29 +342,31 @@ $$;
 
 SELECT import_from_csv(
                'peers',
-               '/Users/amazomic/SQL2_Info21_v1.0-1/src/peers.csv'
+               '/tmp/Peers.csv'
            );
 
 SELECT import_from_csv(
                'tasks',
-               '/Users/amazomic/SQL2_Info21_v1.0-1/src/Tasks.csv'
+               '/tmp/Tasks.csv'
            );
 
 
 SELECT import_from_csv(
                'checks',
-               '/Users/amazomic/SQL2_Info21_v1.0-1/src/Checks.csv'
+               '/tmp/Checks.csv'
            );
 
 SELECT import_from_csv(
                'p2p',
-               '/Users/amazomic/SQL2_Info21_v1.0-1/src/P2P.csv'
+               '/tmp/P2P.csv'
            );
 
 SELECT import_from_csv(
                'verter',
-               '/Users/amazomic/SQL2_Info21_v1.0-1/src/Verter.csv'
+               '/tmp/Verter.csv'
            );
+
+
 
 SELECT import_from_csv(
                'transferredpoints',
