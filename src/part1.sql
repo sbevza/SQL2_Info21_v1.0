@@ -226,7 +226,7 @@ BEGIN
     IF (SELECT t.MaxXP
         FROM Checks ch
                  LEFT JOIN Tasks t on ch.Task = t.Title
-        WHERE ch.ID = NEW."Check") <= NEW.XPAmount
+        WHERE ch.ID = NEW."Check") < NEW.XPAmount
     THEN
         RAISE EXCEPTION 'XPAmount exceeds the maximum allowed for this check';
     END IF;
@@ -325,57 +325,67 @@ END;
 $$;
 
 -- Использование:
+DO
+$$
+    DECLARE
+        path_dir text;
+    BEGIN
+        path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/';
 
-SELECT import_from_csv(
-               'peers',
-               '/tmp/Peers.csv'
-           );
+--         PERFORM import_from_csv(
+--                 'peers',
+--                 path_dir || 'Peers.csv'
+--             );
+--
+--         PERFORM import_from_csv(
+--                 'tasks',
+--                 path_dir || 'Tasks.csv'
+--             );
+--
+--
+--         PERFORM import_from_csv(
+--                 'checks',
+--                 path_dir || 'Checks.csv'
+--             );
+--
+--         PERFORM import_from_csv(
+--                 'p2p',
+--                 path_dir || 'P2P.csv'
+--             );
+--
+--         PERFORM import_from_csv(
+--                 'verter',
+--                 path_dir || 'Verter.csv'
+--             );
+--
+--         PERFORM import_from_csv(
+--                 'transferredpoints',
+--                 path_dir || 'TransferredPoints.csv'
+--             );
 
-SELECT import_from_csv(
-               'tasks',
-               '/tmp/Tasks.csv'
-           );
+--         PERFORM import_from_csv(
+--                 'friends',
+--                 path_dir || 'Friends.csv'
+--             );
+--
+--         PERFORM import_from_csv(
+--                 'recommendations',
+--                 path_dir || 'Recommendations.csv'
+--             );
+--
+        PERFORM import_from_csv(
+                'xp',
+                path_dir || 'XP.csv'
+            );
 
+--         PERFORM import_from_csv(
+--                 'timetracking',
+--                 path_dir || 'TimeTracking.csv'
+--             );
 
-SELECT import_from_csv(
-               'checks',
-               '/tmp/Checks.csv'
-           );
+    END
+$$;
 
-SELECT import_from_csv(
-               'p2p',
-               '/tmp/P2P.csv'
-           );
-
-SELECT import_from_csv(
-               'verter',
-               '/tmp/Verter.csv'
-           );
-
-SELECT import_from_csv(
-               'transferredpoints',
-               '/tmp/TransferredPoints.csv'
-           );
-
-SELECT import_from_csv(
-               'friends',
-               '/Users/amazomic/SQL2_Info21_v1.0-1/src/Friends.csv'
-           );
-
-SELECT import_from_csv(
-               'recommendations',
-               '/Users/amazomic/SQL2_Info21_v1.0-1/src/Recommendations.csv'
-           );
-
-SELECT import_from_csv(
-               'xp',
-               '/Users/amazomic/SQL2_Info21_v1.0-1/src/XP.csv'
-           );
-
-SELECT import_from_csv(
-               'timetracking',
-               '/Users/amazomic/SQL2_Info21_v1.0-1/src/TimeTracking.csv'
-           );
 
 -- SELECT export_to_csv(
 --                'timetracking',
