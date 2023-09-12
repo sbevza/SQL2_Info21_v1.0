@@ -189,21 +189,6 @@ CREATE TABLE IF NOT EXISTS TransferredPoints
     CONSTRAINT ch_transferred_points_peers check (CheckingPeer <> CheckedPeer)
 );
 
-CREATE OR REPLACE FUNCTION fun_trg_set_points_amount()
-    RETURNS TRIGGER AS
-$$
-BEGIN
-    NEW.PointsAmount := 1;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_set_points_amount
-    BEFORE INSERT OR UPDATE
-    ON TransferredPoints
-    FOR EACH ROW
-EXECUTE FUNCTION fun_trg_set_points_amount();
-
 -- Создаем таблицу Friends
 CREATE TABLE IF NOT EXISTS Friends
 (
@@ -369,7 +354,7 @@ SELECT import_from_csv(
 
 SELECT import_from_csv(
                'transferredpoints',
-               '/Users/amazomic/SQL2_Info21_v1.0-1/src/TransferredPoints.csv'
+               '/tmp/TransferredPoints.csv'
            );
 
 SELECT import_from_csv(
