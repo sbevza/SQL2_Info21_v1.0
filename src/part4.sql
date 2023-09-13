@@ -4,6 +4,25 @@ CREATE DATABASE school21_test;
 
 -- Main part
 -----------------ex01-----------------
+CREATE OR REPLACE PROCEDURE drop_tables_with_prefix()
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    table_name text;
+BEGIN
+    FOR table_name IN (SELECT tablename
+                       FROM pg_tables
+                       WHERE schemaname = 'public'
+                         AND tablename LIKE 'tablename%')
+        LOOP
+            --             RAISE NOTICE '%', table_name;
+            EXECUTE 'DROP TABLE IF EXISTS public.' || table_name;
+        END LOOP;
+END;
+$$;
+
+-- Пример использования
 CREATE OR REPLACE PROCEDURE generate_tables()
     LANGUAGE plpgsql
 AS
@@ -27,29 +46,9 @@ END;
 $$;
 
 CALL generate_tables();
-
-CREATE OR REPLACE PROCEDURE drop_tables_with_prefix()
-    LANGUAGE plpgsql
-AS
-$$
-DECLARE
-    table_name text;
-BEGIN
-    FOR table_name IN (SELECT tablename
-                       FROM pg_tables
-                       WHERE schemaname = 'public'
-                         AND tablename LIKE 'tablename%')
-        LOOP
-            --             RAISE NOTICE '%', table_name;
-            EXECUTE 'DROP TABLE IF EXISTS public.' || table_name;
-        END LOOP;
-END;
-$$;
-
 CALL drop_tables_with_prefix();
 
 -----------------ex02-----------------
-
 CREATE OR REPLACE PROCEDURE list_user_scalar_functions(OUT function_count INTEGER)
     LANGUAGE plpgsql
 AS
@@ -71,6 +70,7 @@ BEGIN
 END;
 $$;
 
+-- Пример использования
 CREATE OR REPLACE PROCEDURE list_functions_with_count()
     LANGUAGE plpgsql
 AS
@@ -178,6 +178,7 @@ BEGIN
 END;
 $$;
 
+-- Пример использования
 CREATE OR REPLACE PROCEDURE drop_all_triggers_with_count()
     LANGUAGE plpgsql
 AS
@@ -220,7 +221,6 @@ CREATE TRIGGER example1_after_insert_trigger2
     FOR EACH ROW
 EXECUTE FUNCTION example1_after_insert();
 
-
 -----------------ex04-----------------
 CREATE OR REPLACE PROCEDURE search_functions_by_text(IN search_pattern TEXT)
     LANGUAGE plpgsql
@@ -241,5 +241,5 @@ BEGIN
 END;
 $$;
 
-
+-- Пример использования
 CALL search_functions_by_text('Object Name');

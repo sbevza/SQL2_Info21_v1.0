@@ -289,7 +289,7 @@ CREATE OR REPLACE TRIGGER trg_time_tracking_check_state
 EXECUTE FUNCTION fun_trg_xp_tracking_check_state();
 -----------------------------------------------------------
 
--- Процедура импорта данных в таблицу Peers
+-- Процедура импорта данных в таблицу
 CREATE OR REPLACE FUNCTION import_from_csv(
     tablename text,
     filename text,
@@ -299,11 +299,25 @@ CREATE OR REPLACE FUNCTION import_from_csv(
     LANGUAGE plpgsql
 AS
 $$
+DECLARE
+    seq_name text;
+    max_id bigint;
 BEGIN
     EXECUTE format('COPY %I FROM %L WITH CSV DELIMITER %L', tablename, filename, delimiter);
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = tablename
+          AND column_name = 'id'
+    ) THEN
+        SELECT pg_get_serial_sequence(tablename, 'id') INTO seq_name;
+        EXECUTE format('SELECT MAX(id) FROM %I', tablename) INTO max_id;
+        IF max_id IS NOT NULL THEN
+            EXECUTE format('SELECT setval(%L, %s)', seq_name, max_id);
+        END IF;
+    END IF;
 END;
 $$;
-
 
 CREATE OR REPLACE FUNCTION export_to_csv(
     tablename text,
@@ -330,7 +344,8 @@ $$
     DECLARE
         path_dir text;
     BEGIN
-        path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/';
+--         path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/';
+        path_dir := '/tmp/';
 
         PERFORM import_from_csv(
                 'peers',

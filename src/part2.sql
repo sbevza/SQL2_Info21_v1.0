@@ -1,3 +1,4 @@
+-----------------ex01-----------------
 CREATE OR REPLACE PROCEDURE add_p2p(
     IN checked_peer VARCHAR,
     IN checking_peer VARCHAR,
@@ -11,13 +12,10 @@ DECLARE
     check_id BIGINT;
 BEGIN
     IF state = 'Start' THEN
-
-        -- проверка существования задачи
         IF NOT EXISTS (SELECT 1 FROM tasks WHERE title = task_name) THEN
             RAISE EXCEPTION 'Task % not found', task_name;
         END IF;
 
-        -- проверка существования пиров
         IF NOT EXISTS (SELECT 1 FROM peers WHERE nickname = checked_peer) THEN
             RAISE EXCEPTION 'Checked peer % not found', checked_peer;
         END IF;
@@ -25,19 +23,16 @@ BEGIN
             RAISE EXCEPTION 'Checking peer % not found', checking_peer;
         END IF;
 
-        -- добавление записи в Checks
         INSERT INTO checks (peer, task, date)
         VALUES (checked_peer, task_name, CURRENT_DATE)
         RETURNING id INTO check_id;
 
-        -- добавление записи в P2P
         INSERT INTO p2p("Check", CheckingPeer, State, Time)
         VALUES (check_id, checking_peer, state, check_time);
 
     ELSIF state IN ('Success', 'Failure') THEN
 
-        -- поиск незавершенной проверки
-        SELECT id INTO check_id
+        SELECT c.id INTO check_id
         FROM checks c
                  JOIN p2p p ON p."Check" = c.id
         WHERE p.state = 'Start'
@@ -49,7 +44,6 @@ BEGIN
                 checked_peer, checking_peer, task_name;
         END IF;
 
-        -- добавление записи в P2P
         INSERT INTO p2p("Check", CheckingPeer, State, Time)
         VALUES (check_id, checking_peer, state, check_time);
 
@@ -60,10 +54,10 @@ BEGIN
 END;
 $$;
 -- Пример использования
-CALL add_p2p('john', 'alice', 'A1', 'Start', '10:00');
+CALL add_p2p('john', 'alice', 'D01_Linux', 'Start', '10:00');
+CALL add_p2p('john', 'alice', 'D01_Linux', 'Success', '11:00');
 
-CALL add_p2p('john', 'alice', 'A1', 'Success', '11:00');
-
+-----------------ex02-----------------
 CREATE OR REPLACE PROCEDURE add_verter(
     IN checked_peer VARCHAR,
     IN task_local VARCHAR,
@@ -87,16 +81,19 @@ BEGIN
     IF check_id IS NOT NULL THEN
         INSERT INTO Verter ("Check", State, Time)
         VALUES (check_id, state_local, time_local);
+    ELSE
+        RAISE EXCEPTION 'Invalid state of the check.';
     END IF;
 END;
 $$;
 
 -- Пример использования
-CALL add_verter('john', 'A1', 'Start', '12:00');
+CALL add_verter('john', 'D01_Linux', 'Start', '12:00');
+CALL add_verter('john', 'D01_Linux', 'Success', '13:00');
+CALL add_verter('kate', 'C6_S21_Matrix', 'Start', '12:00');
 
-CALL add_verter('john', 'A1', 'Success', '13:00');
-
-CREATE OR REPLACE FUNCTION fun_trg_p2p_add_prp()
+-----------------ex03-----------------
+CREATE OR REPLACE FUNCTION fnc_trg_p2p_add_prp()
     RETURNS TRIGGER AS
 $$
 DECLARE
@@ -107,7 +104,7 @@ BEGIN
     FROM Checks c
     WHERE c.ID = NEW."Check";
 
-    IF NEW."State" = 'Start' THEN
+    IF NEW."state" = 'Start' THEN
         IF NOT EXISTS (SELECT 1
                        FROM TransferredPoints tp
                        WHERE NEW.CheckingPeer = tp.CheckingPeer
@@ -131,9 +128,17 @@ CREATE OR REPLACE TRIGGER trg_p2p_add_prp
     AFTER INSERT
     ON P2P
     FOR EACH ROW
-EXECUTE FUNCTION fun_trg_p2p_add_prp();
+EXECUTE FUNCTION fnc_trg_p2p_add_prp();
 
-CREATE OR REPLACE FUNCTION fun_trg_xp_check_row()
+-- Пример использования
+INSERT INTO P2P ("Check", checkingpeer, state, time)
+VALUES (7, 'john', 'Start', '11:00');
+SELECT *
+FROM transferredpoints
+WHERE checkingpeer = 'john' AND checkedpeer = 'lisa';
+
+-----------------ex04-----------------
+CREATE OR REPLACE FUNCTION fnc_trg_xp_check_row()
     RETURNS TRIGGER AS
 $$
 BEGIN
@@ -142,8 +147,7 @@ BEGIN
                  LEFT JOIN Tasks t ON ch.Task = t.Title
         WHERE ch.ID = NEW."Check") <= NEW.XPAmount
     THEN
-        RAISE NOTICE 'XPAmount exceeds the maximum allowed for this check';
-        RETURN NULL;
+        RAISE EXCEPTION 'XPAmount exceeds the maximum allowed for this check';
     END IF;
 
     IF (SELECT COUNT(*)
@@ -153,22 +157,22 @@ BEGIN
         WHERE (v.State = 'Success' OR v.State IS NULL) AND p.State = 'Success'
        ) = 0
     THEN
-        RAISE NOTICE 'No successful checks';
-        RETURN NULL;
+        RAISE EXCEPTION 'No successful checks';
     END IF;
 
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Пример использования
-
-INSERT INTO p2p VALUES (1, 1, 'alice', 'Start', '10:00');
-
-SELECT * FROM transferredpoints; -- появилась новая запись
-
 CREATE OR REPLACE TRIGGER trg_xp_check_row
     BEFORE INSERT
     ON XP
     FOR EACH ROW
-EXECUTE FUNCTION fun_trg_xp_check_row();
+EXECUTE FUNCTION fnc_trg_xp_check_row();
+
+-- Пример использования
+INSERT INTO XP ("Check", xpamount) VALUES (11, 1000); -- Error
+INSERT INTO XP ("Check", xpamount) VALUES (11, 500);
+
+SELECT * FROM xp
+WHERE xpamount = 500;
