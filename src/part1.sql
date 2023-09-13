@@ -332,56 +332,56 @@ $$
     BEGIN
         path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/';
 
---         PERFORM import_from_csv(
---                 'peers',
---                 path_dir || 'Peers.csv'
---             );
---
---         PERFORM import_from_csv(
---                 'tasks',
---                 path_dir || 'Tasks.csv'
---             );
---
---
---         PERFORM import_from_csv(
---                 'checks',
---                 path_dir || 'Checks.csv'
---             );
---
---         PERFORM import_from_csv(
---                 'p2p',
---                 path_dir || 'P2P.csv'
---             );
---
---         PERFORM import_from_csv(
---                 'verter',
---                 path_dir || 'Verter.csv'
---             );
---
---         PERFORM import_from_csv(
---                 'transferredpoints',
---                 path_dir || 'TransferredPoints.csv'
---             );
+        PERFORM import_from_csv(
+                'peers',
+                path_dir || 'Peers.csv'
+            );
 
---         PERFORM import_from_csv(
---                 'friends',
---                 path_dir || 'Friends.csv'
---             );
---
---         PERFORM import_from_csv(
---                 'recommendations',
---                 path_dir || 'Recommendations.csv'
---             );
---
+        PERFORM import_from_csv(
+                'tasks',
+                path_dir || 'Tasks.csv'
+            );
+
+
+        PERFORM import_from_csv(
+                'checks',
+                path_dir || 'Checks.csv'
+            );
+
+        PERFORM import_from_csv(
+                'p2p',
+                path_dir || 'P2P.csv'
+            );
+
+        PERFORM import_from_csv(
+                'verter',
+                path_dir || 'Verter.csv'
+            );
+
+        PERFORM import_from_csv(
+                'transferredpoints',
+                path_dir || 'TransferredPoints.csv'
+            );
+
+        PERFORM import_from_csv(
+                'friends',
+                path_dir || 'Friends.csv'
+            );
+
+        PERFORM import_from_csv(
+                'recommendations',
+                path_dir || 'Recommendations.csv'
+            );
+
         PERFORM import_from_csv(
                 'xp',
                 path_dir || 'XP.csv'
             );
 
---         PERFORM import_from_csv(
---                 'timetracking',
---                 path_dir || 'TimeTracking.csv'
---             );
+        PERFORM import_from_csv(
+                'timetracking',
+                path_dir || 'TimeTracking.csv'
+            );
 
     END
 $$;

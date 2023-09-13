@@ -1,38 +1,68 @@
 CREATE OR REPLACE PROCEDURE add_p2p(
     IN checked_peer VARCHAR,
     IN checking_peer VARCHAR,
-    IN task_local VARCHAR,
-    IN state_local check_status,
-    IN time_local TIME
+    IN task_name VARCHAR,
+    IN state check_status,
+    IN check_time TIME
 )
     LANGUAGE plpgsql
-AS
-$$
+AS $$
 DECLARE
-    check_id INTEGER;
+    check_id BIGINT;
 BEGIN
-    SELECT MAX(p."Check")
-    INTO check_id
-    FROM P2P p
-             JOIN Checks c ON p."Check" = c.ID
-    WHERE p.CheckingPeer = checking_peer
-      AND p.State = 'Start'
-      AND c.Task = task_local;
+    IF state = 'Start' THEN
 
-    IF state_local = 'Start' THEN
-        INSERT INTO Checks (Peer, Task, Date)
-        VALUES (checked_peer, task_local, CURRENT_DATE);
+        -- проверка существования задачи
+        IF NOT EXISTS (SELECT 1 FROM tasks WHERE title = task_name) THEN
+            RAISE EXCEPTION 'Task % not found', task_name;
+        END IF;
 
-        SELECT MAX(ID) INTO check_id FROM Checks;
+        -- проверка существования пиров
+        IF NOT EXISTS (SELECT 1 FROM peers WHERE nickname = checked_peer) THEN
+            RAISE EXCEPTION 'Checked peer % not found', checked_peer;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM peers WHERE nickname = checking_peer) THEN
+            RAISE EXCEPTION 'Checking peer % not found', checking_peer;
+        END IF;
 
-        INSERT INTO P2P("Check", CheckingPeer, State, Time)
-        VALUES (check_id, checking_peer, state_local, time_local);
+        -- добавление записи в Checks
+        INSERT INTO checks (peer, task, date)
+        VALUES (checked_peer, task_name, CURRENT_DATE)
+        RETURNING id INTO check_id;
+
+        -- добавление записи в P2P
+        INSERT INTO p2p("Check", CheckingPeer, State, Time)
+        VALUES (check_id, checking_peer, state, check_time);
+
+    ELSIF state IN ('Success', 'Failure') THEN
+
+        -- поиск незавершенной проверки
+        SELECT id INTO check_id
+        FROM checks c
+                 JOIN p2p p ON p."Check" = c.id
+        WHERE p.state = 'Start'
+          AND c.task = task_name
+          AND p.checkingPeer = checking_peer;
+
+        IF check_id IS NULL THEN
+            RAISE EXCEPTION 'No started check found for %, %, %',
+                checked_peer, checking_peer, task_name;
+        END IF;
+
+        -- добавление записи в P2P
+        INSERT INTO p2p("Check", CheckingPeer, State, Time)
+        VALUES (check_id, checking_peer, state, check_time);
+
     ELSE
-        INSERT INTO P2P("Check", CheckingPeer, State, Time)
-        VALUES (check_id, checking_peer, state_local, time_local);
+        RAISE EXCEPTION 'Invalid state: %', state;
     END IF;
+
 END;
 $$;
+-- Пример использования
+CALL add_p2p('john', 'alice', 'A1', 'Start', '10:00');
+
+CALL add_p2p('john', 'alice', 'A1', 'Success', '11:00');
 
 CREATE OR REPLACE PROCEDURE add_verter(
     IN checked_peer VARCHAR,
@@ -60,6 +90,11 @@ BEGIN
     END IF;
 END;
 $$;
+
+-- Пример использования
+CALL add_verter('john', 'A1', 'Start', '12:00');
+
+CALL add_verter('john', 'A1', 'Success', '13:00');
 
 CREATE OR REPLACE FUNCTION fun_trg_p2p_add_prp()
     RETURNS TRIGGER AS
@@ -125,6 +160,12 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Пример использования
+
+INSERT INTO p2p VALUES (1, 1, 'alice', 'Start', '10:00');
+
+SELECT * FROM transferredpoints; -- появилась новая запись
 
 CREATE OR REPLACE TRIGGER trg_xp_check_row
     BEFORE INSERT
