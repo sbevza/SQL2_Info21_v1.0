@@ -192,39 +192,58 @@ FROM mostFrequentTasksPerDay();
 
 
 -- 7. Нахождение рекомендуемых пиров
-CREATE OR REPLACE FUNCTION peersCompletedBlock(blockName VARCHAR)
-    RETURNS TABLE
-            (
-                PeerName       VARCHAR,
-                CompletionDate DATE
-            )
+-- Правильное имя процедуры
+CREATE OR REPLACE PROCEDURE find_peers_completed_block(block_name VARCHAR)
 AS
 $$
+DECLARE
+    last_task_name VARCHAR;
 BEGIN
-    RETURN QUERY (WITH BlockTasks AS (SELECT DISTINCT ON (c.Peer) c.Peer AS PeerName, MAX(c.Date) AS CompletionDate
-                                      FROM Checks c
-                                               JOIN Tasks t ON c.Task = t.Title
-                                      WHERE t.Title LIKE blockName || '%'
-                                        AND c.ID IN (SELECT "Check"
-                                                     FROM P2P
-                                                     WHERE State = 'Success')
-                                        AND c.ID IN (SELECT "Check"
-                                                     FROM Verter
-                                                     WHERE State = 'Success'
-                                                        OR State IS NULL)
-                                      GROUP BY PeerName)
-                  SELECT bt.PeerName, bt.CompletionDate
-                  FROM BlockTasks bt)
-        ORDER BY CompletionDate;
+    -- Находим последнее задание в блоке
+    SELECT get_last_task_in_block(block_name) INTO last_task_name;
+
+    -- Выводим имена пиров, которые успешно выполнили это задание
+    PERFORM
+    FROM Checks c
+    WHERE c.Task = last_task_name
+      AND c.id IN (
+        SELECT p2p."Check"
+        FROM P2P
+        WHERE p2p.State = 'Success'
+    )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM Verter v
+        WHERE v."Check" = c.ID
+          AND v.State = 'Failure'
+    )
+    ORDER BY c.Date DESC; -- Сортировка по убыванию даты completion_date
+
 END;
 $$ LANGUAGE plpgsql;
 
-
 -- Usage:
-SELECT *
-FROM peersCompletedBlock('D');
--- Это найдет для каждого пира того пира, которого рекомендует
--- наибольшее число друзей текущего пира.
+SELECT * FROM find_peers_completed_block('C');
+
+
+---- Доп функция получения посследнего задания блока
+CREATE OR REPLACE FUNCTION get_last_task_in_block(block_name VARCHAR)
+    RETURNS VARCHAR
+AS
+$$
+DECLARE
+    last_task_name VARCHAR;
+BEGIN
+    SELECT MAX(Title) INTO last_task_name
+    FROM Tasks
+    WHERE Title LIKE (block_name || '_%');
+
+    RETURN last_task_name;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT get_last_task_in_block('D'); -- Возвращает название последней задачи в блоке 'C'
+
 
 -- 8. Расчет процента пиров, приступивших к блокам
 CREATE PROCEDURE get_started_block_percents(
@@ -336,10 +355,6 @@ $$ LANGUAGE sql;
 -- через рекурсивный CTE
 
 
-
-
-
-
 -- 15. Определить пиров, приходивших раньше заданного времени не менее N раз за всё время
 CREATE OR REPLACE FUNCTION find_peers_early_arrivals_count(IN time_ TIME, IN N INTEGER)
     RETURNS TABLE
@@ -359,7 +374,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-SELECT * FROM find_peers_early_arrivals_count('14:00:00', 2);
+SELECT *
+FROM find_peers_early_arrivals_count('14:00:00', 2);
 
 
 -- 16. Определить пиров, выходивших за последние N дней из кампуса больше M раз
@@ -382,7 +398,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-SELECT * FROM find_peer_activity(300, 1);
+SELECT *
+FROM find_peer_activity(300, 1);
 
 -- 17. Определить для каждого месяца процент ранних входов
 CREATE OR REPLACE FUNCTION calculate_early_entry_percentage()
