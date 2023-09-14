@@ -1,34 +1,35 @@
 -- 1. Вывод TransferredPoints в читаемом виде
 CREATE OR REPLACE FUNCTION show_transferred_points()
-    RETURNS TABLE (
-                      Peer1 VARCHAR,
-                      Peer2 VARCHAR,
-                      PointsAmount BIGINT
-                  ) AS $$
+    RETURNS TABLE
+            (
+                Peer1        VARCHAR,
+                Peer2        VARCHAR,
+                PointsAmount BIGINT
+            )
+AS
+$$
 BEGIN
-    RETURN QUERY (
-        SELECT
-            CASE
-                WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.checkingPeer
-                ELSE tp1.checkedPeer
-                END AS Peer1,
-            CASE
-                WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.checkedPeer
-                ELSE tp1.checkingPeer
-                END AS Peer2,
-            SUM(
-                    CASE
-                        WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.pointsAmount
-                        ELSE -tp1.pointsAmount
-                        END
-                ) AS PointsAmount
-        FROM transferredPoints tp1
-                 LEFT JOIN transferredPoints tp2
-                           ON tp1.checkingPeer = tp2.checkedPeer
-                               AND tp1.checkedPeer = tp2.checkingPeer
-                               AND tp1.id > tp2.id
-        GROUP BY Peer1, Peer2
-        ORDER BY Peer1 -- Добавлена сортировка по Peer1
+    RETURN QUERY (SELECT CASE
+                             WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.checkingPeer
+                             ELSE tp1.checkedPeer
+                             END AS Peer1,
+                         CASE
+                             WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.checkedPeer
+                             ELSE tp1.checkingPeer
+                             END AS Peer2,
+                         SUM(
+                                 CASE
+                                     WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.pointsAmount
+                                     ELSE -tp1.pointsAmount
+                                     END
+                             )   AS PointsAmount
+                  FROM transferredPoints tp1
+                           LEFT JOIN transferredPoints tp2
+                                     ON tp1.checkingPeer = tp2.checkedPeer
+                                         AND tp1.checkedPeer = tp2.checkingPeer
+                                         AND tp1.id > tp2.id
+                  GROUP BY Peer1, Peer2
+                  ORDER BY Peer1 -- Добавлена сортировка по Peer1
     );
 
     RETURN;
@@ -36,91 +37,88 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Usage:
-SELECT * FROM show_transferred_points();
+SELECT *
+FROM show_transferred_points();
 
 -- 2. Получение выполненных заданий и XP
 CREATE OR REPLACE FUNCTION show_user_tasks_xp()
-    RETURNS TABLE (
-                      Peer VARCHAR,
-                      Task VARCHAR,
-                      XP INTEGER
-                  ) AS $$
+    RETURNS TABLE
+            (
+                Peer VARCHAR,
+                Task VARCHAR,
+                XP   INTEGER
+            )
+AS
+$$
 BEGIN
-    RETURN QUERY (
-        SELECT DISTINCT
-            c.Peer,
-            t.Title AS Task,
-            xp.XPAmount AS XP
-        FROM P2P p
-                 JOIN Checks c ON p."Check" = c.ID
-                 JOIN Tasks t ON c.Task = t.Title
-                 JOIN XP xp ON c.ID = xp."Check"
-                 LEFT JOIN Verter v ON c.ID = v."Check"
-        WHERE p.State = 'Success'
-          AND (v.State IS NULL OR v.State != 'Failure')
-    );
+    RETURN QUERY (SELECT DISTINCT c.Peer,
+                                  t.Title     AS Task,
+                                  xp.XPAmount AS XP
+                  FROM P2P p
+                           JOIN Checks c ON p."Check" = c.ID
+                           JOIN Tasks t ON c.Task = t.Title
+                           JOIN XP xp ON c.ID = xp."Check"
+                           LEFT JOIN Verter v ON c.ID = v."Check"
+                  WHERE p.State = 'Success'
+                    AND (v.State IS NULL OR v.State != 'Failure'));
 
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
 
 -- Usage:
-SELECT * FROM show_user_tasks_xp();
+SELECT *
+FROM show_user_tasks_xp();
 
 -- 3. Поиск пиров, не покидавших кампус
 CREATE OR REPLACE FUNCTION find_peers_inside_campus(day DATE)
-    RETURNS TABLE (
-        Peer VARCHAR
-                  ) AS $$
+    RETURNS TABLE
+            (
+                Peer VARCHAR
+            )
+AS
+$$
 BEGIN
-    RETURN QUERY (
-        SELECT
-            DISTINCT t.Peer
-        FROM TimeTracking t
-        WHERE t.Date = day
-          AND t.State = 1
-          AND NOT EXISTS (
-            SELECT 1
-            FROM TimeTracking t2
-            WHERE t2.Peer = t.Peer
-              AND t2.Date = day
-              AND t2.State = 2
-        )
-    );
+    RETURN QUERY (SELECT DISTINCT t.Peer
+                  FROM TimeTracking t
+                  WHERE t.Date = day
+                    AND t.State = 1
+                    AND NOT EXISTS (SELECT 1
+                                    FROM TimeTracking t2
+                                    WHERE t2.Peer = t.Peer
+                                      AND t2.Date = day
+                                      AND t2.State = 2));
 
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
 
 -- Usage: 
-SELECT * FROM find_peers_inside_campus('2023-01-15');
+SELECT *
+FROM find_peers_inside_campus('2023-01-15');
 
 -- 4. Расчет изменения пир-поинтов
 CREATE OR REPLACE FUNCTION calculate_peer_points_change()
-    RETURNS TABLE (
-                      Peer VARCHAR,
-                      PointsChange BIGINT
-                  ) AS $$
+    RETURNS TABLE
+            (
+                Peer         VARCHAR,
+                PointsChange BIGINT
+            )
+AS
+$$
 BEGIN
-    RETURN QUERY (
-        SELECT
-            Subquery.Peer,
-            CAST(SUM(Subquery.PointsChange) AS BIGINT) AS PointsChange
-        FROM (
-                 SELECT
-                     tp.CheckingPeer AS Peer,
-                     SUM(tp.PointsAmount) AS PointsChange
-                 FROM TransferredPoints tp
-                 GROUP BY tp.CheckingPeer
-                 UNION ALL
-                 SELECT
-                     tp.CheckedPeer AS Peer,
-                     -SUM(tp.PointsAmount) AS PointsChange
-                 FROM TransferredPoints tp
-                 GROUP BY tp.CheckedPeer
-             ) AS Subquery
-        GROUP BY Subquery.Peer
-    )
+    RETURN QUERY (SELECT Subquery.Peer,
+                         CAST(SUM(Subquery.PointsChange) AS BIGINT) AS PointsChange
+                  FROM (SELECT tp.CheckingPeer      AS Peer,
+                               SUM(tp.PointsAmount) AS PointsChange
+                        FROM TransferredPoints tp
+                        GROUP BY tp.CheckingPeer
+                        UNION ALL
+                        SELECT tp.CheckedPeer        AS Peer,
+                               -SUM(tp.PointsAmount) AS PointsChange
+                        FROM TransferredPoints tp
+                        GROUP BY tp.CheckedPeer) AS Subquery
+                  GROUP BY Subquery.Peer)
         ORDER BY PointsChange DESC;
 
     RETURN;
@@ -129,109 +127,102 @@ $$ LANGUAGE plpgsql;
 
 
 -- Usage:
-SELECT * FROM calculate_peer_points_change();
+SELECT *
+FROM calculate_peer_points_change();
 
 -- 5. Самые часто проверяемые задания
 CREATE OR REPLACE FUNCTION calculate_peer_points_change_from_first_function()
-    RETURNS TABLE (
-                      Peer VARCHAR,
-                      PointsChange BIGINT
-                  ) AS $$
+    RETURNS TABLE
+            (
+                Peer         VARCHAR,
+                PointsChange BIGINT
+            )
+AS
+$$
 BEGIN
-    RETURN QUERY (
-        SELECT
-            Subquery.Peer,
-            CAST(SUM(Subquery.PointsChange) AS BIGINT) AS PointsChange
-        FROM (
-                 SELECT
-                     tp.Peer1 AS Peer,
-                     SUM(tp.PointsAmount) AS PointsChange
-                 FROM show_transferred_points() tp
-                 GROUP BY tp.Peer1
-                 UNION ALL
-                 SELECT
-                     tp.Peer2 AS Peer,
-                     -SUM(tp.PointsAmount) AS PointsChange
-                 FROM show_transferred_points() tp
-                 GROUP BY tp.Peer2
-             ) AS Subquery
-        GROUP BY Subquery.Peer
-        ORDER BY PointsChange DESC
-    );
+    RETURN QUERY (SELECT Subquery.Peer,
+                         CAST(SUM(Subquery.PointsChange) AS BIGINT) AS PointsChange
+                  FROM (SELECT tp.Peer1             AS Peer,
+                               SUM(tp.PointsAmount) AS PointsChange
+                        FROM show_transferred_points() tp
+                        GROUP BY tp.Peer1
+                        UNION ALL
+                        SELECT tp.Peer2              AS Peer,
+                               -SUM(tp.PointsAmount) AS PointsChange
+                        FROM show_transferred_points() tp
+                        GROUP BY tp.Peer2) AS Subquery
+                  GROUP BY Subquery.Peer
+                  ORDER BY PointsChange DESC);
 
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
 
 -- Usage:
-SELECT * FROM calculate_peer_points_change_from_first_function();
+SELECT *
+FROM calculate_peer_points_change_from_first_function();
 
 
 -- 6. Поиск пиров, выполнивших весь блок
 CREATE OR REPLACE FUNCTION mostFrequentTasksPerDay()
-    RETURNS TABLE (
-                      Day DATE,
-                      PopularTask VARCHAR
-                  ) AS $$
+    RETURNS TABLE
+            (
+                Day         DATE,
+                PopularTask VARCHAR
+            )
+AS
+$$
 BEGIN
-    RETURN QUERY (
-        WITH TaskRanks AS (
-            SELECT
-                DATE(c.Date) AS "Day",
-                t.Title AS "Task",
-                COUNT(*) AS TaskCount,
-                RANK() OVER (PARTITION BY DATE(c.Date) ORDER BY COUNT(*) DESC) AS TaskRank
-            FROM Checks c
-                     JOIN Tasks t ON c.Task = t.Title
-            GROUP BY "Day", "Task"
-        )
-        SELECT "Day", "Task"
-        FROM TaskRanks
-        WHERE TaskRank = 1
-    );
+    RETURN QUERY (WITH TaskRanks AS (SELECT DATE(c.Date)                                                   AS "Day",
+                                            t.Title                                                        AS "Task",
+                                            COUNT(*)                                                       AS TaskCount,
+                                            RANK() OVER (PARTITION BY DATE(c.Date) ORDER BY COUNT(*) DESC) AS TaskRank
+                                     FROM Checks c
+                                              JOIN Tasks t ON c.Task = t.Title
+                                     GROUP BY "Day", "Task")
+                  SELECT "Day", "Task"
+                  FROM TaskRanks
+                  WHERE TaskRank = 1);
 END;
 $$ LANGUAGE plpgsql;
 
 -- Usage:
-SELECT * FROM mostFrequentTasksPerDay();
+SELECT *
+FROM mostFrequentTasksPerDay();
 
 
 -- 7. Нахождение рекомендуемых пиров
 CREATE OR REPLACE FUNCTION peersCompletedBlock(blockName VARCHAR)
-    RETURNS TABLE (
-                      PeerName VARCHAR,
-                      CompletionDate DATE
-                  ) AS $$
+    RETURNS TABLE
+            (
+                PeerName       VARCHAR,
+                CompletionDate DATE
+            )
+AS
+$$
 BEGIN
-    RETURN QUERY (
-        WITH BlockTasks AS (
-            SELECT DISTINCT ON (c.Peer) c.Peer AS PeerName, MAX(c.Date) AS CompletionDate
-            FROM Checks c
-                     JOIN Tasks t ON c.Task = t.Title
-            WHERE t.Title LIKE blockName || '%'
-              AND c.ID IN (
-                SELECT "Check"
-                FROM P2P
-                WHERE State = 'Success'
-            )
-              AND c.ID IN (
-                SELECT "Check"
-                FROM Verter
-                WHERE State = 'Success' OR State IS NULL
-            )
-            GROUP BY PeerName
-        )
-        SELECT bt.PeerName, bt.CompletionDate
-        FROM BlockTasks bt
-    )
+    RETURN QUERY (WITH BlockTasks AS (SELECT DISTINCT ON (c.Peer) c.Peer AS PeerName, MAX(c.Date) AS CompletionDate
+                                      FROM Checks c
+                                               JOIN Tasks t ON c.Task = t.Title
+                                      WHERE t.Title LIKE blockName || '%'
+                                        AND c.ID IN (SELECT "Check"
+                                                     FROM P2P
+                                                     WHERE State = 'Success')
+                                        AND c.ID IN (SELECT "Check"
+                                                     FROM Verter
+                                                     WHERE State = 'Success'
+                                                        OR State IS NULL)
+                                      GROUP BY PeerName)
+                  SELECT bt.PeerName, bt.CompletionDate
+                  FROM BlockTasks bt)
         ORDER BY CompletionDate;
 END;
 $$ LANGUAGE plpgsql;
 
 
-
 -- Usage:
-SELECT * FROM peersCompletedBlock('D');
+SELECT *
+FROM peersCompletedBlock('D');
 -- Это найдет для каждого пира того пира, которого рекомендует
 -- наибольшее число друзей текущего пира.
 
@@ -241,12 +232,13 @@ CREATE PROCEDURE get_started_block_percents(
     block2 VARCHAR
 )
     LANGUAGE plpgsql
-AS $$
+AS
+$$
 DECLARE
-    total INTEGER;
+    total       INTEGER;
     block1_only INTEGER;
     block2_only INTEGER;
-    both INTEGER;
+    both        INTEGER;
 BEGIN
     SELECT COUNT(*) INTO total FROM peers;
 
@@ -254,11 +246,9 @@ BEGIN
     INTO block1_only
     FROM checks c
     WHERE c.task LIKE block1 || '%'
-      AND c.peer NOT IN (
-        SELECT peer
-        FROM checks
-        WHERE task LIKE block2 || '%'
-    );
+      AND c.peer NOT IN (SELECT peer
+                         FROM checks
+                         WHERE task LIKE block2 || '%');
 
     -- Вычисление block2_only аналогично
 
@@ -283,10 +273,11 @@ $$
 -- 9. Процент пиров, прошедших проверки в день рождения
 CREATE PROCEDURE get_bday_check_percents()
     LANGUAGE plpgsql
-AS $$
+AS
+$$
 DECLARE
-    total INTEGER;
-    successful INTEGER;
+    total        INTEGER;
+    successful   INTEGER;
     unsuccessful INTEGER;
 BEGIN
     SELECT COUNT(*) INTO total FROM peers;
@@ -298,11 +289,11 @@ BEGIN
                   ON c.peer = p.nickname
     WHERE EXTRACT(MONTH FROM c.date) = EXTRACT(MONTH FROM p.birthday)
       AND EXTRACT(DAY FROM c.date) = EXTRACT(DAY FROM p.birthday)
-      AND c.id IN (
-        SELECT check
+      AND c.id IN (SELECT
+        check
     FROM p2p
-    WHERE state = 'Success'
-        );
+    WHERE
+    state = 'Success' );
 
     -- Аналогично для unsuccessful
 
@@ -317,17 +308,19 @@ CREATE FUNCTION get_peers_tasks(
     task1 VARCHAR,
     task2 VARCHAR,
     task3 VARCHAR
-) RETURNS TABLE (
-    peer VARCHAR
-                ) AS $$
+)
+    RETURNS TABLE
+            (
+                peer VARCHAR
+            )
+AS
+$$
 SELECT p.nickname AS peer
 FROM peers p
-WHERE p.nickname IN (
-    SELECT peer
-    FROM checks
-    WHERE task IN (task1, task2)
-      AND id IN (
-        SELECT check
+WHERE p.nickname IN (SELECT peer
+                     FROM checks
+                     WHERE task IN (task1, task2)
+                       AND id IN (SELECT check
 FROM p2p
 WHERE state = 'Success'
     )
@@ -341,31 +334,78 @@ $$ LANGUAGE sql;
 
 -- 11. Подсчет предшествующих заданий
 -- через рекурсивный CTE
-CREATE OR REPLACE FUNCTION calculate_early_entry_percentage()
-    RETURNS TABLE (
-                      Month VARCHAR,
-                      EarlyEntries INT,
-                      EarlyEntryPercentage DECIMAL(5, 2)
-                  ) AS $$
+
+
+
+
+
+
+-- 15. Определить пиров, приходивших раньше заданного времени не менее N раз за всё время
+CREATE OR REPLACE FUNCTION find_peers_early_arrivals_count(IN time_ TIME, IN N INTEGER)
+    RETURNS TABLE
+            (
+                Peers VARCHAR
+            )
+AS
+$$
 BEGIN
     RETURN QUERY
-        SELECT
-            TO_CHAR(Birthday, 'Month') AS Month,
-            SUM(CASE WHEN EXTRACT(HOUR FROM Time) < 12 THEN 1 ELSE 0 END) AS EarlyEntries,
-            (SUM(CASE WHEN EXTRACT(HOUR FROM Time) < 12 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) AS EarlyEntryPercentage
-        FROM Peers
-                 JOIN TimeTracking ON Peers.Nickname = TimeTracking.Peer
-        GROUP BY Month
-        ORDER BY Month;
+        SELECT Peer
+        FROM TimeTracking
+        WHERE EXTRACT(HOUR FROM Time) < EXTRACT(HOUR FROM time_)
+          AND state = 1
+        GROUP BY Peer
+        HAVING COUNT(*) >= N;
 END;
 $$ LANGUAGE plpgsql;
 
-SELECT * FROM calculate_early_entry_percentage();
+SELECT * FROM find_peers_early_arrivals_count('14:00:00', 2);
 
 
+-- 16. Определить пиров, выходивших за последние N дней из кампуса больше M раз
+CREATE OR REPLACE FUNCTION find_peer_activity(IN N INTEGER, IN M INTEGER)
+    RETURNS TABLE
+            (
+                Peers VARCHAR
+            )
+AS
+$$
+BEGIN
+    RETURN QUERY
+        SELECT peers.Nickname AS Peers
+        FROM peers
+                 JOIN TimeTracking ON Peers.Nickname = TimeTracking.Peer
+        WHERE TimeTracking.Date >= CURRENT_DATE - N * INTERVAL '1 days'
+          AND state = 1
+        GROUP BY peers.nickname
+        HAVING COUNT(*) > M;
+END;
+$$ LANGUAGE plpgsql;
 
+SELECT * FROM find_peer_activity(300, 1);
 
+-- 17. Определить для каждого месяца процент ранних входов
+CREATE OR REPLACE FUNCTION calculate_early_entry_percentage()
+    RETURNS TABLE
+            (
+                Month                VARCHAR,
+                EarlyEntryPercentage DECIMAL(5, 2)
+            )
+AS
+$$
+BEGIN
+    RETURN QUERY
+        SELECT TO_CHAR(Birthday, 'Month')::VARCHAR AS Month,
+               (SUM(CASE
+                        WHEN EXTRACT(HOUR FROM Time) < 12 THEN 1
+                        ELSE 0
+                   END) * 100.0 / COUNT(*))        AS EarlyEntries
+        FROM Peers
+                 JOIN TimeTracking ON Peers.Nickname = TimeTracking.Peer
+        GROUP BY Month, peers.birthday
+        ORDER BY EXTRACT(MONTH FROM Birthday);
+END;
+$$ LANGUAGE plpgsql;
 
-SELECT * FROM calculate_early_entry_percentage();
-
-
+SELECT *
+FROM calculate_early_entry_percentage();
