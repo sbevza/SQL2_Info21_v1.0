@@ -206,24 +206,21 @@ BEGIN
     PERFORM
     FROM Checks c
     WHERE c.Task = last_task_name
-      AND c.id IN (
-        SELECT p2p."Check"
-        FROM P2P
-        WHERE p2p.State = 'Success'
-    )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM Verter v
-        WHERE v."Check" = c.ID
-          AND v.State = 'Failure'
-    )
+      AND c.id IN (SELECT p2p."Check"
+                   FROM P2P
+                   WHERE p2p.State = 'Success')
+      AND NOT EXISTS (SELECT 1
+                      FROM Verter v
+                      WHERE v."Check" = c.ID
+                        AND v.State = 'Failure')
     ORDER BY c.Date DESC; -- Сортировка по убыванию даты completion_date
 
 END;
 $$ LANGUAGE plpgsql;
 
 -- Usage:
-SELECT * FROM find_peers_completed_block('C');
+SELECT *
+FROM find_peers_completed_block('C');
 
 
 ---- Доп функция получения посследнего задания блока
@@ -234,7 +231,8 @@ $$
 DECLARE
     last_task_name VARCHAR;
 BEGIN
-    SELECT MAX(Title) INTO last_task_name
+    SELECT MAX(Title)
+    INTO last_task_name
     FROM Tasks
     WHERE Title LIKE (block_name || '_%');
 
@@ -355,17 +353,112 @@ $$ LANGUAGE sql;
 -- через рекурсивный CTE
 
 
--- 15. Определить пиров, приходивших раньше заданного времени не менее N раз за всё время
-CREATE OR REPLACE FUNCTION find_peers_early_arrivals_count(IN time_ TIME, IN N INTEGER)
-    RETURNS TABLE
-            (
-                Peers VARCHAR
-            )
-AS
+
+
+-- 12. Используя рекурсивное обобщенное табличное выражение,
+-- для каждой задачи вывести кол-во предшествующих ей задач
+CREATE OR REPLACE PROCEDURE task_predecessor_count(INOUT ref REFCURSOR) AS
 $$
 BEGIN
-    RETURN QUERY
-        SELECT Peer
+    OPEN ref FOR
+        WITH RECURSIVE TaskHierarchy AS (SELECT title      AS Task,
+                                                parenttask AS ParentTask
+                                         FROM tasks
+                                         WHERE parenttask IS NOT NULL
+                                         UNION ALL
+                                         SELECT t.title,
+                                                t.parenttask
+                                         FROM tasks t
+                                                  JOIN TaskHierarchy th ON t.parenttask = th.Task)
+        SELECT t.title AS Task, COUNT(th.ParentTask) AS PrevCount
+        FROM tasks t
+                 LEFT JOIN TaskHierarchy th ON t.title = th.Task
+        GROUP BY t.title
+        ORDER BY t.title;
+END;
+$$ LANGUAGE plpgsql;
+
+BEGIN;
+CALL task_predecessor_count('ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
+
+-- 13. Найти "удачные" для проверок дни. День считается "удачным", если в нем
+-- есть хотя бы N идущих подряд успешных проверки
+CREATE OR REPLACE PROCEDURE find_successful_check_days(
+    N INTEGER, INOUT ref REFCURSOR) AS
+$$
+BEGIN
+    OPEN ref FOR
+        WITH CheckData AS (SELECT ch.date,
+                                  p.id,
+                                  p.time,
+                                  p.state,
+                                  SUM(CASE
+                                          WHEN p.state = 'Failure' THEN
+                                              1
+                                          ELSE 0
+                                      END)
+                                  OVER (PARTITION BY ch.date ORDER BY p.time) AS reset_counter
+                           FROM checks ch
+                                    JOIN p2p p ON ch.id = p."Check"),
+
+             CheckDataSuccess AS (SELECT date,
+                                         id,
+                                         time,
+                                         state,
+                                         ROW_NUMBER() OVER (PARTITION BY date, reset_counter ORDER BY time) AS consecutive_success_count
+                                  FROM CheckData
+                                  WHERE state = 'Success'
+                                  ORDER BY date, id)
+        SELECT date
+        FROM CheckDataSuccess
+        GROUP BY date
+        HAVING MAX(consecutive_success_count) >= N;
+END;
+$$ LANGUAGE plpgsql;
+
+BEGIN;
+CALL find_successful_check_days(2, 'ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
+
+-- 14. Определить пира с наибольшим количеством XP find_peer_with_highest_xp
+CREATE OR REPLACE PROCEDURE find_peer_with_highest_xp(INOUT ref REFCURSOR) AS
+$$
+BEGIN
+    OPEN ref FOR
+        WITH XPTable AS (SELECT ch.peer,
+                                xp.xpamount AS XP
+                         FROM checks ch
+                                  JOIN xp ON ch.id = xp."Check")
+        SELECT p.Nickname,
+               XP_table.XP_amount
+        FROM Peers p
+                 JOIN (SELECT XPTable.Peer, SUM(XP) AS XP_amount
+                       FROM XPTable
+                       GROUP BY XPTable.Peer
+                       HAVING SUM(XP) = (SELECT MAX(total_xp)
+                                         FROM (SELECT SUM(XP) AS total_xp FROM XPTable GROUP BY Peer) AS max_xp)) AS XP_table
+                      ON p.Nickname = XP_table.Peer;
+END;
+$$ LANGUAGE plpgsql;
+
+BEGIN;
+CALL find_peer_with_highest_xp('ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
+
+-- 15. Определить пиров, приходивших раньше заданного времени не менее N раз за всё время
+CREATE OR REPLACE PROCEDURE find_peers_early_arrivals_count(
+    IN time_ TIME, IN N INTEGER, INOUT ref REFCURSOR) AS
+$$
+BEGIN
+    OPEN ref FOR
+        SELECT Peer AS Nickname
         FROM TimeTracking
         WHERE EXTRACT(HOUR FROM Time) < EXTRACT(HOUR FROM time_)
           AND state = 1
@@ -374,20 +467,18 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-SELECT *
-FROM find_peers_early_arrivals_count('14:00:00', 2);
-
+BEGIN;
+CALL find_peers_early_arrivals_count('14:00:00', 2, 'ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
 
 -- 16. Определить пиров, выходивших за последние N дней из кампуса больше M раз
-CREATE OR REPLACE FUNCTION find_peer_activity(IN N INTEGER, IN M INTEGER)
-    RETURNS TABLE
-            (
-                Peers VARCHAR
-            )
+CREATE OR REPLACE PROCEDURE find_peer_activity(IN N INTEGER, IN M INTEGER, INOUT ref REFCURSOR)
 AS
 $$
 BEGIN
-    RETURN QUERY
+    OPEN ref FOR
         SELECT peers.Nickname AS Peers
         FROM peers
                  JOIN TimeTracking ON Peers.Nickname = TimeTracking.Peer
@@ -398,25 +489,22 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-SELECT *
-FROM find_peer_activity(300, 1);
+BEGIN;
+CALL find_peer_activity(300, 1, 'ref');
+FETCH ALL FROM ref;
+COMMIT;
+END;
 
 -- 17. Определить для каждого месяца процент ранних входов
-CREATE OR REPLACE FUNCTION calculate_early_entry_percentage()
-    RETURNS TABLE
-            (
-                Month                VARCHAR,
-                EarlyEntryPercentage DECIMAL(5, 2)
-            )
-AS
+CREATE OR REPLACE PROCEDURE calculate_early_entry_percentage(INOUT ref REFCURSOR) AS
 $$
 BEGIN
-    RETURN QUERY
+    OPEN ref FOR
         SELECT TO_CHAR(Birthday, 'Month')::VARCHAR AS Month,
-               (SUM(CASE
-                        WHEN EXTRACT(HOUR FROM Time) < 12 THEN 1
-                        ELSE 0
-                   END) * 100.0 / COUNT(*))        AS EarlyEntries
+               ROUND((SUM(CASE
+                              WHEN EXTRACT(HOUR FROM Time) < 12 THEN 1
+                              ELSE 0
+                   END) * 100.0 / COUNT(*)), 2)    AS EarlyEntries
         FROM Peers
                  JOIN TimeTracking ON Peers.Nickname = TimeTracking.Peer
         GROUP BY Month, peers.birthday
@@ -424,5 +512,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-SELECT *
-FROM calculate_early_entry_percentage();
+BEGIN;
+CALL calculate_early_entry_percentage('ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
