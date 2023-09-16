@@ -70,6 +70,7 @@ $$ LANGUAGE plpgsql;
 SELECT *
 FROM show_user_tasks_xp();
 
+
 -- 3. Поиск пиров, не покидавших кампус
 CREATE OR REPLACE FUNCTION find_peers_inside_campus(day DATE)
     RETURNS TABLE
@@ -97,103 +98,102 @@ $$ LANGUAGE plpgsql;
 SELECT *
 FROM find_peers_inside_campus('2023-01-15');
 
+
 -- 4. Расчет изменения пир-поинтов
-CREATE OR REPLACE FUNCTION calculate_peer_points_change()
-    RETURNS TABLE
-            (
-                Peer         VARCHAR,
-                PointsChange BIGINT
-            )
+CREATE OR REPLACE PROCEDURE calculate_peer_points_change(INOUT ref REFCURSOR)
 AS
 $$
 BEGIN
-    RETURN QUERY (SELECT Subquery.Peer,
-                         CAST(SUM(Subquery.PointsChange) AS BIGINT) AS PointsChange
-                  FROM (SELECT tp.CheckingPeer      AS Peer,
-                               SUM(tp.PointsAmount) AS PointsChange
-                        FROM TransferredPoints tp
-                        GROUP BY tp.CheckingPeer
-                        UNION ALL
-                        SELECT tp.CheckedPeer        AS Peer,
-                               -SUM(tp.PointsAmount) AS PointsChange
-                        FROM TransferredPoints tp
-                        GROUP BY tp.CheckedPeer) AS Subquery
-                  GROUP BY Subquery.Peer)
+    OPEN ref FOR
+        SELECT Subquery.Peer,
+               CAST(SUM(Subquery.PointsChange) AS BIGINT) AS PointsChange
+        FROM (SELECT tp.CheckingPeer      AS Peer,
+                     SUM(tp.PointsAmount) AS PointsChange
+              FROM TransferredPoints tp
+              GROUP BY tp.CheckingPeer
+              UNION ALL
+              SELECT tp.CheckedPeer        AS Peer,
+                     -SUM(tp.PointsAmount) AS PointsChange
+              FROM TransferredPoints tp
+              GROUP BY tp.CheckedPeer) AS Subquery
+        GROUP BY Subquery.Peer
         ORDER BY PointsChange DESC;
 
-    RETURN;
 END;
 $$ LANGUAGE plpgsql;
 
-
 -- Usage:
-SELECT *
-FROM calculate_peer_points_change();
+BEGIN;
+CALL calculate_peer_points_change( 'ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
+
 
 -- 5. Самые часто проверяемые задания
-CREATE OR REPLACE FUNCTION calculate_peer_points_change_from_first_function()
-    RETURNS TABLE
-            (
-                Peer         VARCHAR,
-                PointsChange BIGINT
-            )
+CREATE OR REPLACE PROCEDURE calculate_peer_points_change_from_first_function(INOUT ref REFCURSOR)
 AS
 $$
 BEGIN
-    RETURN QUERY (SELECT Subquery.Peer,
-                         CAST(SUM(Subquery.PointsChange) AS BIGINT) AS PointsChange
-                  FROM (SELECT tp.Peer1             AS Peer,
-                               SUM(tp.PointsAmount) AS PointsChange
-                        FROM show_transferred_points() tp
-                        GROUP BY tp.Peer1
-                        UNION ALL
-                        SELECT tp.Peer2              AS Peer,
-                               -SUM(tp.PointsAmount) AS PointsChange
-                        FROM show_transferred_points() tp
-                        GROUP BY tp.Peer2) AS Subquery
-                  GROUP BY Subquery.Peer
-                  ORDER BY PointsChange DESC);
-
-    RETURN;
+    OPEN ref FOR
+        SELECT Subquery.Peer,
+               CAST(SUM(Subquery.PointsChange) AS BIGINT) AS PointsChange
+        FROM (SELECT tp.Peer1             AS Peer,
+                     SUM(tp.PointsAmount) AS PointsChange
+              FROM show_transferred_points() tp
+              GROUP BY tp.Peer1
+              UNION ALL
+              SELECT tp.Peer2              AS Peer,
+                     -SUM(tp.PointsAmount) AS PointsChange
+              FROM show_transferred_points() tp
+              GROUP BY tp.Peer2) AS Subquery
+        GROUP BY Subquery.Peer
+        ORDER BY PointsChange DESC;
 END;
 $$ LANGUAGE plpgsql;
 
+
 -- Usage:
-SELECT *
-FROM calculate_peer_points_change_from_first_function();
+BEGIN;
+CALL calculate_peer_points_change_from_first_function('ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
 
 
 -- 6. Поиск пиров, выполнивших весь блок
-CREATE OR REPLACE FUNCTION mostFrequentTasksPerDay()
-    RETURNS TABLE
-            (
-                Day         DATE,
-                PopularTask VARCHAR
-            )
+CREATE OR REPLACE PROCEDURE mostFrequentTasksPerDay(inOUT ref REFCURSOR)
 AS
 $$
 BEGIN
-    RETURN QUERY (WITH TaskRanks AS (SELECT DATE(c.Date)                                                   AS "Day",
-                                            t.Title                                                        AS "Task",
-                                            COUNT(*)                                                       AS TaskCount,
-                                            RANK() OVER (PARTITION BY DATE(c.Date) ORDER BY COUNT(*) DESC) AS TaskRank
-                                     FROM Checks c
-                                              JOIN Tasks t ON c.Task = t.Title
-                                     GROUP BY "Day", "Task")
-                  SELECT "Day", "Task"
-                  FROM TaskRanks
-                  WHERE TaskRank = 1);
+    OPEN ref FOR
+        WITH TaskRanks AS (
+            SELECT DATE(c.Date) AS "Day",
+                   t.Title AS "Task",
+                   COUNT(*) AS TaskCount,
+                   RANK() OVER (PARTITION BY DATE(c.Date) ORDER BY COUNT(*) DESC) AS TaskRank
+            FROM Checks c
+                     JOIN Tasks t ON c.Task = t.Title
+            GROUP BY "Day", "Task"
+        )
+        SELECT "Day", "Task"
+        FROM TaskRanks
+        WHERE TaskRank = 1;
 END;
 $$ LANGUAGE plpgsql;
 
+
 -- Usage:
-SELECT *
-FROM mostFrequentTasksPerDay();
+BEGIN;
+CALL mostFrequentTasksPerDay('ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
 
 
--- 7. Нахождение рекомендуемых пиров
--- Правильное имя процедуры
-CREATE OR REPLACE PROCEDURE find_peers_completed_block(block_name VARCHAR)
+-- 7. Найти всех пиров, выполнивших весь заданный блок задач и дату завершения последнего задания
+
+CREATE OR REPLACE PROCEDURE find_peers_completed_block(block_name VARCHAR, INOUT ref REFCURSOR)
 AS
 $$
 DECLARE
@@ -203,24 +203,34 @@ BEGIN
     SELECT get_last_task_in_block(block_name) INTO last_task_name;
 
     -- Выводим имена пиров, которые успешно выполнили это задание
-    PERFORM
-    FROM Checks c
-    WHERE c.Task = last_task_name
-      AND c.id IN (SELECT p2p."Check"
-                   FROM P2P
-                   WHERE p2p.State = 'Success')
-      AND NOT EXISTS (SELECT 1
-                      FROM Verter v
-                      WHERE v."Check" = c.ID
-                        AND v.State = 'Failure')
-    ORDER BY c.Date DESC; -- Сортировка по убыванию даты completion_date
+    OPEN ref FOR
+        SELECT c.Peer AS peer_name,
+               c.Date AS completion_date
+        FROM Checks c
+        WHERE c.Task = last_task_name
+          AND c.id IN (
+            SELECT p2p."Check"
+            FROM P2P
+            WHERE p2p.State = 'Success'
+        )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM Verter v
+            WHERE v."Check" = c.ID
+              AND v.State = 'Failure'
+        )
+        ORDER BY c.Date DESC, c.Peer; -- Сортировка сначала по Date, затем по Peer
 
 END;
 $$ LANGUAGE plpgsql;
 
+
 -- Usage:
-SELECT *
-FROM find_peers_completed_block('C');
+BEGIN;
+CALL find_peers_completed_block('C', 'ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
 
 
 ---- Доп функция получения посследнего задания блока
@@ -240,120 +250,61 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-SELECT get_last_task_in_block('D'); -- Возвращает название последней задачи в блоке 'C'
+SELECT get_last_task_in_block('C'); -- Возвращает название последней задачи в блоке 'C'
 
 
--- 8. Расчет процента пиров, приступивших к блокам
-CREATE PROCEDURE get_started_block_percents(
-    block1 VARCHAR,
-    block2 VARCHAR
-)
-    LANGUAGE plpgsql
+-- 8 Определить, к какому пиру стоит идти на проверку каждому обучающемуся
+CREATE OR REPLACE PROCEDURE find_most_recommended_peers(INOUT ref REFCURSOR)
 AS
 $$
 DECLARE
-    total       INTEGER;
-    block1_only INTEGER;
-    block2_only INTEGER;
-    both        INTEGER;
+    popular_peer VARCHAR;
+    second_popular_peer VARCHAR;
 BEGIN
-    SELECT COUNT(*) INTO total FROM peers;
+    SELECT RecommendedPeer
+    INTO popular_peer
+    FROM (
+             SELECT RecommendedPeer, COUNT(*) AS recommendation_count
+             FROM Recommendations
+             GROUP BY RecommendedPeer
+             ORDER BY COUNT(*) DESC
+             LIMIT 2
+         ) AS subquery
+    ORDER BY recommendation_count DESC
+    LIMIT 1;
 
-    SELECT COUNT(DISTINCT c.peer)
-    INTO block1_only
-    FROM checks c
-    WHERE c.task LIKE block1 || '%'
-      AND c.peer NOT IN (SELECT peer
-                         FROM checks
-                         WHERE task LIKE block2 || '%');
+    SELECT RecommendedPeer
+    INTO second_popular_peer
+    FROM (
+             SELECT RecommendedPeer, COUNT(*) AS recommendation_count
+             FROM Recommendations
+             GROUP BY RecommendedPeer
+             ORDER BY COUNT(*) DESC
+             LIMIT 2
+         ) AS subquery
+    ORDER BY recommendation_count DESC
+    OFFSET 1
+        LIMIT 1;
 
-    -- Вычисление block2_only аналогично
-
-    SELECT COUNT(DISTINCT c.peer)
-    INTO both
-    FROM checks c
-    WHERE c.task LIKE block1 || '%'
-      AND c.peer IN (
-        SELECT peer
-        FROM checks
-        WHERE task LIKE block2 || '%'
-        );
-
-    -- Вывод процентов
-    RAISE INFO 'Started only %: %', block1, ROUND(100.0 * block1_only / total);
-    RAISE INFO 'Started only %: %', block2, ROUND(100.0 * block2_only / total);
-    RAISE INFO 'Started both: %', ROUND(100.0 * both / total);
-    RAISE INFO 'Started none: %', ROUND(100.0 * (total - both - block1_only - block2_only) / total);
+    OPEN ref FOR
+        SELECT
+            p.nickname AS Peer,
+            CASE
+                WHEN p.nickname = popular_peer THEN second_popular_peer
+                ELSE popular_peer
+                END AS RecommendedPeer
+        FROM
+            Peers p;
 END;
-$$
+$$ LANGUAGE plpgsql;
 
--- 9. Процент пиров, прошедших проверки в день рождения
-CREATE PROCEDURE get_bday_check_percents()
-    LANGUAGE plpgsql
-AS
-$$
-DECLARE
-    total        INTEGER;
-    successful   INTEGER;
-    unsuccessful INTEGER;
-BEGIN
-    SELECT COUNT(*) INTO total FROM peers;
 
-    SELECT COUNT(DISTINCT c.peer)
-    INTO successful
-    FROM checks c
-             JOIN peers p
-                  ON c.peer = p.nickname
-    WHERE EXTRACT(MONTH FROM c.date) = EXTRACT(MONTH FROM p.birthday)
-      AND EXTRACT(DAY FROM c.date) = EXTRACT(DAY FROM p.birthday)
-      AND c.id IN (SELECT
-        check
-    FROM p2p
-    WHERE
-    state = 'Success' );
 
-    -- Аналогично для unsuccessful
-
-    RAISE INFO 'Successful: %', ROUND(100.0 * successful / total, 1);
-    RAISE INFO 'Unsuccessful: %', ROUND(100.0 * unsuccessful / total, 1);
-
+BEGIN;
+CALL find_most_recommended_peers( 'ref');
+FETCH ALL FROM ref;
+CLOSE ref;
 END;
-$$
-
--- 10. Поиск пиров, выполнивших задания 1 и 2, но не 3
-CREATE FUNCTION get_peers_tasks(
-    task1 VARCHAR,
-    task2 VARCHAR,
-    task3 VARCHAR
-)
-    RETURNS TABLE
-            (
-                peer VARCHAR
-            )
-AS
-$$
-SELECT p.nickname AS peer
-FROM peers p
-WHERE p.nickname IN (SELECT peer
-                     FROM checks
-                     WHERE task IN (task1, task2)
-                       AND id IN (SELECT check
-FROM p2p
-WHERE state = 'Success'
-    )
-    )
-  AND p.nickname NOT IN (
-SELECT peer
-FROM checks
-WHERE task = task3
-    )
-$$ LANGUAGE sql;
-
--- 11. Подсчет предшествующих заданий
--- через рекурсивный CTE
-
-
-
 
 -- 12. Используя рекурсивное обобщенное табличное выражение,
 -- для каждой задачи вывести кол-во предшествующих ей задач

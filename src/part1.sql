@@ -47,7 +47,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE TRIGGER trg_check_unique_null_parent_task
+CREATE OR REPLACE TRIGGER trg_check_unique_null_parent_task
     BEFORE INSERT OR UPDATE
     ON Tasks
     FOR EACH ROW
@@ -123,7 +123,7 @@ CREATE OR REPLACE TRIGGER trg_p2p_check_state
     FOR EACH ROW
 EXECUTE FUNCTION fnc_trg_p2p_check_state();
 
--- Создаем таблицу Verter 
+-- Создаем таблицу Verter
 CREATE TABLE IF NOT EXISTS Verter
 (
     ID      SERIAL PRIMARY KEY,
@@ -169,7 +169,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_verter_check_state
+CREATE OR REPLACE TRIGGER trg_verter_check_state
     BEFORE INSERT
     ON Verter
     FOR EACH ROW
@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS Friends
     CONSTRAINT ch_friends_peers check (Peer1 <> Peer2)
 );
 
--- Создаем таблицу Recommendations  
+-- Создаем таблицу Recommendations
 CREATE TABLE IF NOT EXISTS Recommendations
 (
     ID              SERIAL PRIMARY KEY,
@@ -234,14 +234,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_xp_check_xp_amount
+CREATE OR REPLACE  TRIGGER trg_xp_check_xp_amount
     BEFORE INSERT OR UPDATE
     ON XP
     FOR EACH ROW
 EXECUTE FUNCTION fun_trg_xp_check_xp_amount();
 
 -- Создаем таблицу TimeTracking
-CREATE TABLE TimeTracking
+CREATE TABLE IF NOT EXISTS TimeTracking
 (
     ID    SERIAL PRIMARY KEY,
     Peer  VARCHAR NOT NULL,
@@ -338,14 +338,26 @@ BEGIN
 END;
 $$;
 
--- Использование:
+-- Заполнения таблиц командами импорта из таблиц:
 DO
 $$
     DECLARE
         path_dir text;
     BEGIN
---         path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/';
-        path_dir := '/tmp/';
+        path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/';
+        --         path_dir := '/tmp/';
+
+        -- Очищаем другие таблицы перед импортом
+        TRUNCATE TABLE checks CASCADE;
+        TRUNCATE TABLE peers CASCADE;
+        TRUNCATE TABLE tasks CASCADE;
+        TRUNCATE TABLE p2p CASCADE;
+        TRUNCATE TABLE verter CASCADE;
+        TRUNCATE TABLE transferredpoints CASCADE;
+        TRUNCATE TABLE friends CASCADE;
+        TRUNCATE TABLE recommendations CASCADE;
+        TRUNCATE TABLE xp CASCADE;
+        TRUNCATE TABLE timetracking CASCADE;
 
         PERFORM import_from_csv(
                 'peers',
@@ -356,7 +368,6 @@ $$
                 'tasks',
                 path_dir || 'Tasks.csv'
             );
-
 
         PERFORM import_from_csv(
                 'checks',
@@ -401,19 +412,66 @@ $$
     END
 $$;
 
-
--- SELECT export_to_csv(
---                'timetracking',
---                '/Users/amazomic/SQL2_Info21_v1.0-1/src/TimeTracking1.csv'
---            );
+-- DO
+-- $$
+--     DECLARE
+--         path_dir text;
+--     BEGIN
+--         path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/';
 --
--- SELECT export_to_csv(
---                'xp',
---                '/Users/amazomic/SQL2_Info21_v1.0-1/src/XP1.csv'
---            );
+--         PERFORM export_to_csv(
+--                 'peers',
+--                 path_dir || 'Peers.csv'
+--             );
+--
+--         PERFORM export_to_csv(
+--                 'tasks',
+--                 path_dir || 'Tasks.csv'
+--             );
+--
+--         PERFORM export_to_csv(
+--                 'checks',
+--                 path_dir || 'Checks.csv'
+--             );
+--
+--         PERFORM export_to_csv(
+--                 'p2p',
+--                 path_dir || 'P2P.csv'
+--             );
+--
+--         PERFORM export_to_csv(
+--                 'verter',
+--                 path_dir || 'Verter.csv'
+--             );
+--
+--         PERFORM export_to_csv(
+--                 'transferredpoints',
+--                 path_dir || 'TransferredPoints.csv'
+--             );
+--
+--         PERFORM export_to_csv(
+--                 'friends',
+--                 path_dir || 'Friends.csv'
+--             );
+--
+--         PERFORM export_to_csv(
+--                 'recommendations',
+--                 path_dir || 'Recommendations.csv'
+--             );
+--
+--         PERFORM export_to_csv(
+--                 'xp',
+--                 path_dir || 'XP.csv'
+--             );
+--
+--         PERFORM export_to_csv(
+--                 'timetracking',
+--                 path_dir || 'TimeTracking.csv'
+--             );
+--
+--     END
+-- $$;
 
--- INSERT INTO Tasks (Title, ParentTask, MaxXP)
--- VALUES ('C2_SimpleBashUtils','Math Homework 1', 15);
 
 
 
