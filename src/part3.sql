@@ -70,7 +70,6 @@ $$ LANGUAGE plpgsql;
 SELECT *
 FROM show_user_tasks_xp();
 
-
 -- 3. Поиск пиров, не покидавших кампус
 CREATE OR REPLACE FUNCTION find_peers_inside_campus(day DATE)
     RETURNS TABLE
@@ -97,7 +96,6 @@ $$ LANGUAGE plpgsql;
 -- Usage: 
 SELECT *
 FROM find_peers_inside_campus('2023-01-15');
-
 
 -- 4. Расчет изменения пир-поинтов
 CREATE OR REPLACE PROCEDURE calculate_peer_points_change(INOUT ref REFCURSOR)
@@ -418,8 +416,11 @@ FETCH ALL FROM ref;
 CLOSE ref;
 END;
 
+
+
+
 -- 11 пределить всех пиров, которые сдали заданные задания 1 и 2, но не сдали задание 3
-CREATE OR REPLACE PROCEDURE find_peers_with_tasks(
+CREATE OR REPLACE PROCEDURE find_peers_completed_tasks(
     IN task1_name VARCHAR(255),
     IN task2_name VARCHAR(255),
     IN task3_name VARCHAR(255),
@@ -492,11 +493,70 @@ $$ LANGUAGE plpgsql;
 
 -- Usage:
 BEGIN;
-CALL find_peers_with_tasks( 'C2_SimpleBashUtils', 'C3_S21_String+', 'C4_S21_Math', 'ref' );
+CALL find_peers_completed_tasks( 'C2_SimpleBashUtils', 'C3_S21_String+', 'C4_S21_Math', 'ref' );
 FETCH ALL FROM ref;
 CLOSE ref;
 END;
 
+
+
+
+-- 11.  Определить всех пиров, которые сдали заданные задания 1 и 2, но не сдали задание 3
+CREATE OR REPLACE PROCEDURE find_peers_completed_tasks(
+    task1 VARCHAR,
+    task2 VARCHAR,
+    task3 VARCHAR,
+    INOUT ref REFCURSOR
+)
+AS
+$$
+BEGIN
+    OPEN ref FOR
+WITH task_filtered AS (
+    SELECT c.id,
+           c.peer,
+           c.task,
+           p.state AS p_state,
+           v.state AS v_state
+    FROM Checks c
+             LEFT JOIN P2P p ON c.ID = p."Check"
+             LEFT JOIN Verter v ON c.ID = v."Check"
+    WHERE c.task IN (task1, task2, task3)
+      AND p.state <> 'Start'
+)
+
+SELECT DISTINCT p.nickname
+FROM peers p
+WHERE EXISTS (
+    SELECT 1
+    FROM task_filtered tf1
+    WHERE tf1.peer = p.nickname
+      AND tf1.task = task1
+      AND (tf1.p_state = 'Success' AND (tf1.v_state IS NULL OR tf1.v_state = 'Success'))
+)
+  AND EXISTS (
+    SELECT 1
+    FROM task_filtered tf2
+    WHERE tf2.peer = p.nickname
+      AND tf2.task = task2
+      AND (tf2.p_state = 'Success' AND (tf2.v_state IS NULL OR tf2.v_state = 'Success'))
+)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM task_filtered tf3
+    WHERE tf3.peer = p.nickname
+      AND tf3.task = task3
+      AND (tf3.p_state = 'Failure' OR tf3.v_state = 'Failure')
+);
+END;
+$$ LANGUAGE plpgsql;
+
+BEGIN;
+CALL find_peers_completed_tasks('C2_SimpleBashUtils', 'D01_Linux', 'D02_LinuxNetwork', 'ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+COMMIT;
+END;
 
 -- 12. Используя рекурсивное обобщенное табличное выражение,
 -- для каждой задачи вывести кол-во предшествующих ей задач
@@ -513,7 +573,7 @@ BEGIN
                                                 t.parenttask
                                          FROM tasks t
                                                   JOIN TaskHierarchy th ON t.parenttask = th.Task)
-        SELECT t.title AS Task, COUNT(th.ParentTask) AS PrevCount
+        SELECT substring(t.title from '^[^_]+') AS Task, COUNT(th.ParentTask) AS PrevCount
         FROM tasks t
                  LEFT JOIN TaskHierarchy th ON t.title = th.Task
         GROUP BY t.title
@@ -525,6 +585,7 @@ BEGIN;
 CALL task_predecessor_count('ref');
 FETCH ALL FROM ref;
 CLOSE ref;
+COMMIT;
 END;
 
 -- 13. Найти "удачные" для проверок дни. День считается "удачным", если в нем
@@ -566,6 +627,7 @@ BEGIN;
 CALL find_successful_check_days(2, 'ref');
 FETCH ALL FROM ref;
 CLOSE ref;
+COMMIT;
 END;
 
 -- 14. Определить пира с наибольшим количеством XP find_peer_with_highest_xp
@@ -593,6 +655,7 @@ BEGIN;
 CALL find_peer_with_highest_xp('ref');
 FETCH ALL FROM ref;
 CLOSE ref;
+COMMIT;
 END;
 
 -- 15. Определить пиров, приходивших раньше заданного времени не менее N раз за всё время
@@ -614,6 +677,7 @@ BEGIN;
 CALL find_peers_early_arrivals_count('14:00:00', 2, 'ref');
 FETCH ALL FROM ref;
 CLOSE ref;
+COMMIT;
 END;
 
 -- 16. Определить пиров, выходивших за последние N дней из кампуса больше M раз
@@ -635,6 +699,7 @@ $$ LANGUAGE plpgsql;
 BEGIN;
 CALL find_peer_activity(300, 1, 'ref');
 FETCH ALL FROM ref;
+CLOSE ref;
 COMMIT;
 END;
 
@@ -659,4 +724,5 @@ BEGIN;
 CALL calculate_early_entry_percentage('ref');
 FETCH ALL FROM ref;
 CLOSE ref;
+COMMIT;
 END;
