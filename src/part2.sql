@@ -56,6 +56,8 @@ $$;
 -- Пример использования
 CALL add_p2p('john', 'alice', 'D01_Linux', 'Start', '10:00');
 CALL add_p2p('john', 'alice', 'D01_Linux', 'Success', '11:00');
+CALL add_p2p('john', 'alice', 'D01_Linux', 'Success', '11:00');
+CALL add_p2p('john1', 'alice1', 'D01_Linux', 'Success', '11:00');
 
 -----------------ex02-----------------
 CREATE OR REPLACE PROCEDURE add_verter(
@@ -91,6 +93,7 @@ $$;
 CALL add_verter('john', 'D01_Linux', 'Start', '12:00');
 CALL add_verter('john', 'D01_Linux', 'Success', '13:00');
 CALL add_verter('kate', 'C6_S21_Matrix', 'Start', '12:00');
+CALL add_verter('john', 'C6_S21_Matrix', 'Start', '12:00');
 
 -----------------ex03-----------------
 CREATE OR REPLACE FUNCTION fnc_trg_p2p_add_prp()
@@ -172,7 +175,7 @@ EXECUTE FUNCTION fnc_trg_xp_check_row();
 
 -- Пример использования
 INSERT INTO XP ("Check", xpamount) VALUES (11, 1000); -- Error
-INSERT INTO XP ("Check", xpamount) VALUES (11, 500);
+INSERT INTO XP ("Check", xpamount) VALUES (11, 300);
 
-SELECT * FROM xp
-WHERE xpamount = 500;
+-- SELECT * FROM xp
+-- WHERE xpamount = 300;

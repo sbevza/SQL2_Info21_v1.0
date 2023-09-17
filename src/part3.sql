@@ -306,6 +306,198 @@ FETCH ALL FROM ref;
 CLOSE ref;
 END;
 
+
+-- 9  Определить процент пиров, которые:
+-- - Приступили только к блоку 1
+-- - Приступили только к блоку 2
+-- - Приступили к обоим
+-- - Не приступили ни к одному
+CREATE OR REPLACE PROCEDURE calculate_block_participation(
+    IN block1_name VARCHAR,
+    IN block2_name VARCHAR,
+    INOUT ref REFCURSOR
+)
+AS
+$$
+DECLARE
+    block1_started DECIMAL;
+    block2_started DECIMAL;
+    both_blocks_started DECIMAL;
+    neither_block_started DECIMAL;
+BEGIN
+    -- Рассчитываем процент пиров, приступивших только к блоку 1
+    SELECT (
+                   (COUNT(DISTINCT c.Peer) * 100.0) / (SELECT COUNT(DISTINCT Peer) FROM Checks)
+               )
+    INTO block1_started
+    FROM Checks c
+    WHERE c.Task LIKE block1_name || '%';
+
+    -- Рассчитываем процент пиров, приступивших только к блоку 2
+    SELECT (
+                   (COUNT(DISTINCT c.Peer) * 100.0) / (SELECT COUNT(DISTINCT Peer) FROM Checks)
+               )
+    INTO block2_started
+    FROM Checks c
+    WHERE c.Task LIKE block2_name || '%';
+
+    -- Рассчитываем процент пиров, приступивших к обоим блокам
+    SELECT (
+                   (COUNT(DISTINCT c.Peer) * 100.0) / (SELECT COUNT(DISTINCT Peer) FROM Checks)
+               )
+    INTO both_blocks_started
+    FROM Checks c
+    WHERE c.Task LIKE block1_name || '%' AND c.Peer IN (
+        SELECT DISTINCT Peer
+        FROM Checks
+        WHERE Task LIKE block2_name || '%'
+    );
+
+    -- Рассчитываем процент пиров, не приступивших ни к одному блоку
+    SELECT (
+                   (COUNT(DISTINCT p.Nickname) * 100.0 - COUNT(DISTINCT c.Peer) * 100.0) / (SELECT COUNT(DISTINCT Peer) FROM Checks)
+               )
+    INTO neither_block_started
+    FROM Peers p
+             LEFT JOIN Checks c ON p.Nickname = c.Peer
+    WHERE c.Peer IS NULL;
+
+    -- Открываем курсор для вывода результата
+    OPEN ref FOR
+        SELECT block1_started, block2_started, both_blocks_started, neither_block_started;
+
+END;
+$$ LANGUAGE plpgsql;
+
+-- Usage:
+BEGIN;
+CALL calculate_block_participation( 'C', 'D','ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
+
+-- 10 Определить процент пиров, которые когда-либо успешно проходили проверку в свой день рождения
+
+CREATE OR REPLACE PROCEDURE calculate_birthday_check_stats(
+    INOUT ref REFCURSOR
+)
+AS
+$$
+DECLARE
+    total_people INT;
+    total_successful_checks INT;
+BEGIN
+    -- Получаем сумму людей и сумму успешных проверок в День Рождения
+    SELECT
+        COUNT(DISTINCT p.Nickname),
+        SUM(CASE WHEN p2p.State = 'Success' AND (verter.State IS NULL OR verter.State = 'Success') THEN 1 ELSE 0 END)
+    INTO
+        total_people,
+        total_successful_checks
+    FROM Peers p
+             JOIN Checks c ON p.Nickname = c.Peer
+             LEFT JOIN P2P p2p ON c.ID = p2p."Check"
+             LEFT JOIN Verter verter ON c.ID = verter."Check"
+    WHERE EXTRACT(MONTH FROM c.Date) = EXTRACT(MONTH FROM p.Birthday)
+      AND EXTRACT(DAY FROM c.Date) = EXTRACT(DAY FROM p.Birthday);
+
+    -- Открываем курсор для вывода результатов
+    OPEN ref FOR
+        SELECT
+            ROUND((total_successful_checks * 100.0) / total_people) AS SuccessfulChecks,
+            100 - ROUND((total_successful_checks * 100.0) / total_people) AS UnsuccessfulChecks;
+
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Usage:
+BEGIN;
+CALL calculate_birthday_check_stats( 'ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
+
+-- 11 пределить всех пиров, которые сдали заданные задания 1 и 2, но не сдали задание 3
+CREATE OR REPLACE PROCEDURE find_peers_with_tasks(
+    IN task1_name VARCHAR(255),
+    IN task2_name VARCHAR(255),
+    IN task3_name VARCHAR(255),
+    INOUT ref REFCURSOR
+)
+AS
+$$
+BEGIN
+    -- Создаем временные таблицы для каждого задания
+    CREATE TEMP TABLE IF NOT EXISTS successful_task1_completed (
+        Peer VARCHAR(50)
+    );
+    CREATE TEMP TABLE IF NOT EXISTS successful_task2_completed (
+        Peer VARCHAR(50)
+    );
+    CREATE TEMP TABLE IF NOT EXISTS successful_task3_completed (
+        Peer VARCHAR(50)
+    );
+
+    -- Очищаем временные таблицы перед вставкой новых данных
+    TRUNCATE TABLE successful_task1_completed;
+    TRUNCATE TABLE successful_task2_completed;
+    TRUNCATE TABLE successful_task3_completed;
+
+    -- Получаем список пиров, успешно выполнивших первое задание
+    INSERT INTO successful_task1_completed (Peer)
+    SELECT DISTINCT c.Peer
+    FROM Checks c
+             JOIN Tasks t ON c.Task = t.Title
+             LEFT JOIN P2P p2p ON c.ID = p2p."Check" AND p2p.State = 'Success'
+             LEFT JOIN Verter verter ON c.ID = verter."Check"
+    WHERE t.Title = task1_name
+      AND (p2p.State = 'Success' AND (verter.State IS NULL OR verter.State = 'Success'));
+
+    -- Получаем список пиров, успешно выполнивших второе задание
+    INSERT INTO successful_task2_completed (Peer)
+    SELECT DISTINCT c.Peer
+    FROM Checks c
+             JOIN Tasks t ON c.Task = t.Title
+             LEFT JOIN P2P p2p ON c.ID = p2p."Check" AND p2p.State = 'Success'
+             LEFT JOIN Verter verter ON c.ID = verter."Check"
+    WHERE t.Title = task2_name
+      AND (p2p.State = 'Success' AND (verter.State IS NULL OR verter.State = 'Success'));
+
+    -- Получаем список пиров, успешно выполнивших третье задание
+    INSERT INTO successful_task3_completed (Peer)
+    SELECT DISTINCT c.Peer
+    FROM Checks c
+             JOIN Tasks t ON c.Task = t.Title
+             LEFT JOIN P2P p2p ON c.ID = p2p."Check" AND p2p.State = 'Success'
+             LEFT JOIN Verter verter ON c.ID = verter."Check"
+    WHERE t.Title = task3_name
+      AND (p2p.State = 'Success' AND (verter.State IS NULL OR verter.State = 'Success'));
+
+    -- Получаем итоговый список пиров без пустых строк
+    OPEN ref FOR
+        SELECT
+            successful_task1_completed.Peer AS "Список пиров"
+        FROM successful_task1_completed
+                 FULL OUTER JOIN successful_task2_completed
+                                 ON successful_task1_completed.Peer = successful_task2_completed.Peer
+                 FULL OUTER JOIN successful_task3_completed
+                                 ON successful_task1_completed.Peer = successful_task3_completed.Peer
+        WHERE successful_task1_completed.Peer IS NOT NULL
+          AND successful_task2_completed.Peer IS NOT NULL
+          AND successful_task3_completed.Peer IS NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Usage:
+BEGIN;
+CALL find_peers_with_tasks( 'C2_SimpleBashUtils', 'C3_S21_String+', 'C4_S21_Math', 'ref' );
+FETCH ALL FROM ref;
+CLOSE ref;
+END;
+
+
 -- 12. Используя рекурсивное обобщенное табличное выражение,
 -- для каждой задачи вывести кол-во предшествующих ей задач
 CREATE OR REPLACE PROCEDURE task_predecessor_count(INOUT ref REFCURSOR) AS

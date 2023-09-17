@@ -1,7 +1,7 @@
 1,john,C2_SimpleBashUtils,2023-09-11
 2,bob,C3_S21_String+,2023-09-12
 3,alice,C4_S21_Math,2023-09-13
-4,mike,C5_S21_Decimal,2023-09-14
+4,mike,C2_SimpleBashUtils,2023-09-14
 5,kate,C6_S21_Matrix,2023-09-15
 6,chris,C7_SmartCalc_V1.0,2023-09-16
 7,lisa,C8_3DViewer_V1.0,2023-09-17
@@ -9,3 +9,15 @@
 9,nick,D02_LinuxNetwork,2023-09-19
 10,jess,D03_LinuxMonitoring_V1.0,2023-09-20
 11,bob,C3_S21_String+,2023-09-20
+12,john,C2_SimpleBashUtils,2023-09-11
+13,john,C3_S21_String+,2023-09-12
+14,john,C4_S21_Math,2023-09-13
+15,john,C5_S21_Decimal,2023-09-14
+16,john,C7_SmartCalc_V1.0,2023-09-15
+17,john,C8_3DViewer_V1.0,2023-09-16
+18,john,C2_SimpleBashUtils,2023-09-11
+19,mike,C3_S21_String+,2023-09-16
+20,mike,C4_S21_Math,2023-09-17
+21,mike,C5_S21_Decimal,2023-09-18
+22,mike,C7_SmartCalc_V1.0,2023-09-20
+23,mike,C8_3DViewer_V1.0,2023-09-26
