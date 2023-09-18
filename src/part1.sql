@@ -412,65 +412,65 @@ $$
     END
 $$;
 
--- DO
--- $$
---     DECLARE
---         path_dir text;
---     BEGIN
---         path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/';
---
---         PERFORM export_to_csv(
---                 'peers',
---                 path_dir || 'Peers.csv'
---             );
---
---         PERFORM export_to_csv(
---                 'tasks',
---                 path_dir || 'Tasks.csv'
---             );
---
---         PERFORM export_to_csv(
---                 'checks',
---                 path_dir || 'Checks.csv'
---             );
---
---         PERFORM export_to_csv(
---                 'p2p',
---                 path_dir || 'P2P.csv'
---             );
---
---         PERFORM export_to_csv(
---                 'verter',
---                 path_dir || 'Verter.csv'
---             );
---
---         PERFORM export_to_csv(
---                 'transferredpoints',
---                 path_dir || 'TransferredPoints.csv'
---             );
---
---         PERFORM export_to_csv(
---                 'friends',
---                 path_dir || 'Friends.csv'
---             );
---
---         PERFORM export_to_csv(
---                 'recommendations',
---                 path_dir || 'Recommendations.csv'
---             );
---
---         PERFORM export_to_csv(
---                 'xp',
---                 path_dir || 'XP.csv'
---             );
---
---         PERFORM export_to_csv(
---                 'timetracking',
---                 path_dir || 'TimeTracking.csv'
---             );
---
---     END
--- $$;
+DO
+$$
+    DECLARE
+        path_dir text;
+    BEGIN
+        path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/';
+
+        PERFORM export_to_csv(
+                'peers',
+                path_dir || 'Peers.csv'
+            );
+
+        PERFORM export_to_csv(
+                'tasks',
+                path_dir || 'Tasks.csv'
+            );
+
+        PERFORM export_to_csv(
+                'checks',
+                path_dir || 'Checks.csv'
+            );
+
+        PERFORM export_to_csv(
+                'p2p',
+                path_dir || 'P2P.csv'
+            );
+
+        PERFORM export_to_csv(
+                'verter',
+                path_dir || 'Verter.csv'
+            );
+
+        PERFORM export_to_csv(
+                'transferredpoints',
+                path_dir || 'TransferredPoints.csv'
+            );
+
+        PERFORM export_to_csv(
+                'friends',
+                path_dir || 'Friends.csv'
+            );
+
+        PERFORM export_to_csv(
+                'recommendations',
+                path_dir || 'Recommendations.csv'
+            );
+
+        PERFORM export_to_csv(
+                'xp',
+                path_dir || 'XP.csv'
+            );
+
+        PERFORM export_to_csv(
+                'timetracking',
+                path_dir || 'TimeTracking.csv'
+            );
+
+    END
+$$;
 
 
 

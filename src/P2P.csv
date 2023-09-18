@@ -15,3 +15,17 @@
 15,7,chris,Success,15:00:00
 16,17,bob,Start,08:00:00
 17,17,bob,Success,10:00:00
+18,26,alice,Start,06:00:00
+20,13,bob,Start,07:00:00
+21,13,bob,Success,21:00:00
+19,26,alice,Success,07:00:00
+22,27,vlados,Start,06:00:00
+23,27,vlados,Success,07:00:00
+28,14,alice,Start,06:00:00
+29,14,alice,Success,08:00:00
+24,30,chris,Start,06:00:00
+25,30,chris,Success,07:00:00
+26,20,kate,Start,03:00:00
+27,20,kate,Success,05:00:00
+30,19,chris,Start,06:00:00
+31,19,chris,Success,10:00:00
