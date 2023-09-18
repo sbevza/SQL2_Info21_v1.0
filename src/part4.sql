@@ -16,7 +16,6 @@ BEGIN
                        WHERE schemaname = 'public'
                          AND tablename LIKE 'tablename%')
         LOOP
-            --             RAISE NOTICE '%', table_name;
             EXECUTE 'DROP TABLE IF EXISTS public.' || table_name;
         END LOOP;
 END;
@@ -61,6 +60,7 @@ BEGIN
                           FROM information_schema.routines r
                                    JOIN information_schema.parameters p ON r.specific_name = p.specific_name
                           WHERE r.specific_schema = 'public'
+                            AND r.data_type IN ('integer', 'smallint', 'bigint', 'real', 'numeric', 'int', 'double precision')
                             AND r.routine_type = 'FUNCTION'
                           GROUP BY r.routine_name)
         LOOP
@@ -233,6 +233,8 @@ BEGIN
         SELECT r.routine_name AS function_name, r.routine_type AS object_type
         FROM information_schema.routines r
         WHERE r.specific_schema = 'public'
+          AND (r.data_type IS NULL
+            OR r.data_type IN ('integer', 'smallint', 'bigint', 'real', 'numeric', 'int', 'double precision'))
           AND r.routine_type IN ('FUNCTION', 'PROCEDURE')
           AND position(search_pattern IN r.routine_definition) > 0
         LOOP
@@ -243,3 +245,4 @@ $$;
 
 -- Пример использования
 CALL search_functions_by_text('Object Name');
+
