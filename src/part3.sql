@@ -547,8 +547,8 @@ BEGIN
                                 xp.xpamount AS XP
                          FROM checks ch
                                   JOIN xp ON ch.id = xp."Check")
-        SELECT p.Nickname,
-               XP_table.XP_amount
+        SELECT p.Nickname AS Peer,
+               XP_table.XP_amount AS XP
         FROM Peers p
                  JOIN (SELECT XPTable.Peer, SUM(XP) AS XP_amount
                        FROM XPTable
@@ -558,6 +558,7 @@ BEGIN
                       ON p.Nickname = XP_table.Peer;
 END;
 $$ LANGUAGE plpgsql;
+
 
 BEGIN;
 CALL find_peer_with_highest_xp('ref');
