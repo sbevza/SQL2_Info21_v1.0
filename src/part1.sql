@@ -344,8 +344,7 @@ $$
     DECLARE
         path_dir text;
     BEGIN
-        path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/';
-        --         path_dir := '/tmp/';
+        path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/csv/';  -- поменять на свой путь
 
         -- Очищаем другие таблицы перед импортом
         TRUNCATE TABLE checks CASCADE;
@@ -417,7 +416,7 @@ $$
     DECLARE
         path_dir text;
     BEGIN
-        path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/';
+        path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/csv/';
 
         PERFORM export_to_csv(
                 'peers',

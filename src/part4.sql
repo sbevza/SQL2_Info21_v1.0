@@ -245,5 +245,5 @@ END;
 $$;
 
 -- Пример использования
-CALL search_functions_by_text('Object Name');
+CALL search_functions_by_text('Peers');
 
