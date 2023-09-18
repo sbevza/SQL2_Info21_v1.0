@@ -9,28 +9,23 @@ CREATE OR REPLACE FUNCTION show_transferred_points()
 AS
 $$
 BEGIN
-    RETURN QUERY (SELECT CASE
-                             WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.checkingPeer
-                             ELSE tp1.checkedPeer
-                             END AS Peer1,
-                         CASE
-                             WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.checkedPeer
-                             ELSE tp1.checkingPeer
-                             END AS Peer2,
-                         SUM(
-                                 CASE
-                                     WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.pointsAmount
-                                     ELSE -tp1.pointsAmount
-                                     END
-                             )   AS PointsAmount
-                  FROM transferredPoints tp1
-                           LEFT JOIN transferredPoints tp2
-                                     ON tp1.checkingPeer = tp2.checkedPeer
-                                         AND tp1.checkedPeer = tp2.checkingPeer
-                                         AND tp1.id > tp2.id
-                  GROUP BY Peer1, Peer2
-                  ORDER BY Peer1 -- Добавлена сортировка по Peer1
-    );
+    RETURN QUERY
+        SELECT
+            LEAST(tp1.checkingPeer, tp1.checkedPeer) AS Peer1,
+            GREATEST(tp1.checkingPeer, tp1.checkedPeer) AS Peer2,
+            SUM(
+                    CASE
+                        WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.pointsAmount
+                        ELSE -tp1.pointsAmount
+                        END
+                ) AS PointsAmount
+        FROM transferredPoints tp1
+                 LEFT JOIN transferredPoints tp2
+                           ON tp1.checkingPeer = tp2.checkedPeer
+                               AND tp1.checkedPeer = tp2.checkingPeer
+                               AND tp1.id > tp2.id
+        GROUP BY Peer1, Peer2
+        ORDER BY Peer1;
 
     RETURN;
 END;
@@ -52,16 +47,14 @@ AS
 $$
 BEGIN
     RETURN QUERY (SELECT DISTINCT c.Peer,
-                                  t.Title     AS Task,
+                                  c.task,
                                   xp.XPAmount AS XP
                   FROM P2P p
                            JOIN Checks c ON p."Check" = c.ID
-                           JOIN Tasks t ON c.Task = t.Title
                            JOIN XP xp ON c.ID = xp."Check"
                            LEFT JOIN Verter v ON c.ID = v."Check"
                   WHERE p.State = 'Success'
                     AND (v.State IS NULL OR v.State != 'Failure'));
-
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
@@ -97,14 +90,14 @@ $$ LANGUAGE plpgsql;
 SELECT *
 FROM find_peers_inside_campus('2023-01-15');
 
--- 4. Расчет изменения пир-поинтов
+-- 4. Посчитать изменение в количестве пир поинтов каждого пира по таблице TransferredPoints
 CREATE OR REPLACE PROCEDURE calculate_peer_points_change(INOUT ref REFCURSOR)
 AS
 $$
 BEGIN
     OPEN ref FOR
         SELECT Subquery.Peer,
-               CAST(SUM(Subquery.PointsChange) AS BIGINT) AS PointsChange
+               SUM(Subquery.PointsChange) AS PointsChange
         FROM (SELECT tp.CheckingPeer      AS Peer,
                      SUM(tp.PointsAmount) AS PointsChange
               FROM TransferredPoints tp
@@ -125,10 +118,11 @@ BEGIN;
 CALL calculate_peer_points_change( 'ref');
 FETCH ALL FROM ref;
 CLOSE ref;
+COMMIT;
 END;
 
 
--- 5. Самые часто проверяемые задания
+-- 5. Посчитать изменение в количестве пир поинтов каждого пира по таблице, возвращаемой первой функцией из Part 3
 CREATE OR REPLACE PROCEDURE calculate_peer_points_change_from_first_function(INOUT ref REFCURSOR)
 AS
 $$
@@ -156,10 +150,11 @@ BEGIN;
 CALL calculate_peer_points_change_from_first_function('ref');
 FETCH ALL FROM ref;
 CLOSE ref;
+COMMIT;
 END;
 
 
--- 6. Поиск пиров, выполнивших весь блок
+-- 6. Определить самое часто проверяемое задание за каждый день
 CREATE OR REPLACE PROCEDURE mostFrequentTasksPerDay(inOUT ref REFCURSOR)
 AS
 $$
@@ -194,18 +189,20 @@ END;
 CREATE OR REPLACE PROCEDURE find_peers_completed_block(block_name VARCHAR, INOUT ref REFCURSOR)
 AS
 $$
-DECLARE
-    last_task_name VARCHAR;
+-- DECLARE
+--     last_task_name VARCHAR;
 BEGIN
     -- Находим последнее задание в блоке
-    SELECT get_last_task_in_block(block_name) INTO last_task_name;
+--     SELECT get_last_task_in_block(block_name) INTO last_task_name;
 
     -- Выводим имена пиров, которые успешно выполнили это задание
     OPEN ref FOR
         SELECT c.Peer AS peer_name,
                c.Date AS completion_date
         FROM Checks c
-        WHERE c.Task = last_task_name
+        WHERE c.Task = (SELECT MAX(Title)
+        FROM Tasks
+        WHERE Title LIKE (block_name || '_%'))
           AND c.id IN (
             SELECT p2p."Check"
             FROM P2P
@@ -232,23 +229,23 @@ END;
 
 
 ---- Доп функция получения посследнего задания блока
-CREATE OR REPLACE FUNCTION get_last_task_in_block(block_name VARCHAR)
-    RETURNS VARCHAR
-AS
-$$
-DECLARE
-    last_task_name VARCHAR;
-BEGIN
-    SELECT MAX(Title)
-    INTO last_task_name
-    FROM Tasks
-    WHERE Title LIKE (block_name || '_%');
-
-    RETURN last_task_name;
-END;
-$$ LANGUAGE plpgsql;
-
-SELECT get_last_task_in_block('C'); -- Возвращает название последней задачи в блоке 'C'
+-- CREATE OR REPLACE FUNCTION get_last_task_in_block(block_name VARCHAR)
+--     RETURNS VARCHAR
+-- AS
+-- $$
+-- DECLARE
+--     last_task_name VARCHAR;
+-- BEGIN
+--     SELECT MAX(Title)
+--     INTO last_task_name
+--     FROM Tasks
+--     WHERE Title LIKE (block_name || '_%');
+--
+--     RETURN last_task_name;
+-- END;
+-- $$ LANGUAGE plpgsql;
+--
+-- SELECT get_last_task_in_block('C'); -- Возвращает название последней задачи в блоке 'C'
 
 
 -- 8 Определить, к какому пиру стоит идти на проверку каждому обучающемуся
@@ -295,8 +292,6 @@ BEGIN
             Peers p;
 END;
 $$ LANGUAGE plpgsql;
-
-
 
 BEGIN;
 CALL find_most_recommended_peers( 'ref');
@@ -375,7 +370,6 @@ CLOSE ref;
 END;
 
 -- 10 Определить процент пиров, которые когда-либо успешно проходили проверку в свой день рождения
-
 CREATE OR REPLACE PROCEDURE calculate_birthday_check_stats(
     INOUT ref REFCURSOR
 )
@@ -399,7 +393,6 @@ BEGIN
     WHERE EXTRACT(MONTH FROM c.Date) = EXTRACT(MONTH FROM p.Birthday)
       AND EXTRACT(DAY FROM c.Date) = EXTRACT(DAY FROM p.Birthday);
 
-    -- Открываем курсор для вывода результатов
     OPEN ref FOR
         SELECT
             ROUND((total_successful_checks * 100.0) / total_people) AS SuccessfulChecks,

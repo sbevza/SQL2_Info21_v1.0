@@ -60,7 +60,8 @@ BEGIN
                           FROM information_schema.routines r
                                    JOIN information_schema.parameters p ON r.specific_name = p.specific_name
                           WHERE r.specific_schema = 'public'
-                            AND r.data_type IN ('integer', 'smallint', 'bigint', 'real', 'numeric', 'int', 'double precision')
+                            AND r.data_type IN ('integer', 'smallint', 'bigint', 'real', 'numeric'
+                            , 'int', 'double precision', 'decimal')
                             AND r.routine_type = 'FUNCTION'
                           GROUP BY r.routine_name)
         LOOP
@@ -234,7 +235,7 @@ BEGIN
         FROM information_schema.routines r
         WHERE r.specific_schema = 'public'
           AND (r.data_type IS NULL
-            OR r.data_type IN ('integer', 'smallint', 'bigint', 'real', 'numeric', 'int', 'double precision'))
+            OR r.data_type IN ('integer', 'smallint', 'bigint', 'real', 'numeric', 'int', 'double precision', 'decimal'))
           AND r.routine_type IN ('FUNCTION', 'PROCEDURE')
           AND position(search_pattern IN r.routine_definition) > 0
         LOOP
