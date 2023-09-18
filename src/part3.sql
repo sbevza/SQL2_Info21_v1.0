@@ -152,7 +152,6 @@ CLOSE ref;
 COMMIT;
 END;
 
-
 -- 6. Определить самое часто проверяемое задание за каждый день
 CREATE OR REPLACE PROCEDURE mostFrequentTasksPerDay(inOUT ref REFCURSOR)
 AS
@@ -495,41 +494,6 @@ BEGIN
         HAVING MAX(consecutive_success_count) >= N;
 END;
 $$ LANGUAGE plpgsql;
-
-WITH CheckData
-         AS (SELECT ch.date,
-                    ch.id,
-                    CASE
-                        WHEN p.state = 'Success' AND (v.state = 'Success' OR v.state IS NULL)
-                            AND xp.xpamount >= t.maxxp * 0.8
-                            THEN
-                            'Success'
-                        ELSE
-                            'Failure'
-                        END AS result_state,
-                    t.title,
-                    t.maxxp,
-                    xp.xpamount,
-                    SUM(CASE
-                            WHEN p.state = 'Success' AND (v.state = 'Success' OR v.state IS NULL)
-                                AND xp.xpamount >= t.maxxp * 0.8 THEN 0
-                            ELSE 1
-                        END) OVER (PARTITION BY ch.date ORDER BY ch.id) AS reset_counter
-             FROM checks ch
-                      JOIN p2p p ON ch.id = p."Check"
-                      LEFT JOIN public.verter v on ch.id = v."Check"
-                      JOIN tasks t ON ch.task = t.title
-                      JOIN xp ON xp."Check" = ch.id
-             WHERE (v.state <> 'Start' or v.state IS NULL)
-               and p.state <> 'Start'
-             ORDER BY ch.id)
-
-
-SELECT *
-FROM CheckData
-;
-
-
 
 BEGIN;
 CALL find_successful_check_days(1, 'ref');
