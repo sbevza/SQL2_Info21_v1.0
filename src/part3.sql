@@ -90,6 +90,7 @@ $$ LANGUAGE plpgsql;
 SELECT *
 FROM find_peers_inside_campus('2023-01-15');
 
+
 -- 4. Посчитать изменение в количестве пир поинтов каждого пира по таблице TransferredPoints
 CREATE OR REPLACE PROCEDURE calculate_peer_points_change(INOUT ref REFCURSOR)
 AS
@@ -185,16 +186,10 @@ END;
 
 
 -- 7. Найти всех пиров, выполнивших весь заданный блок задач и дату завершения последнего задания
-
 CREATE OR REPLACE PROCEDURE find_peers_completed_block(block_name VARCHAR, INOUT ref REFCURSOR)
 AS
 $$
--- DECLARE
---     last_task_name VARCHAR;
 BEGIN
-    -- Находим последнее задание в блоке
---     SELECT get_last_task_in_block(block_name) INTO last_task_name;
-
     -- Выводим имена пиров, которые успешно выполнили это задание
     OPEN ref FOR
         SELECT c.Peer AS peer_name,
@@ -214,11 +209,10 @@ BEGIN
             WHERE v."Check" = c.ID
               AND v.State = 'Failure'
         )
-        ORDER BY c.Date DESC, c.Peer; -- Сортировка сначала по Date, затем по Peer
+        ORDER BY c.Date DESC, c.Peer;
 
 END;
 $$ LANGUAGE plpgsql;
-
 
 -- Usage:
 BEGIN;
@@ -226,26 +220,6 @@ CALL find_peers_completed_block('C', 'ref');
 FETCH ALL FROM ref;
 CLOSE ref;
 END;
-
-
----- Доп функция получения посследнего задания блока
--- CREATE OR REPLACE FUNCTION get_last_task_in_block(block_name VARCHAR)
---     RETURNS VARCHAR
--- AS
--- $$
--- DECLARE
---     last_task_name VARCHAR;
--- BEGIN
---     SELECT MAX(Title)
---     INTO last_task_name
---     FROM Tasks
---     WHERE Title LIKE (block_name || '_%');
---
---     RETURN last_task_name;
--- END;
--- $$ LANGUAGE plpgsql;
---
--- SELECT get_last_task_in_block('C'); -- Возвращает название последней задачи в блоке 'C'
 
 
 -- 8 Определить, к какому пиру стоит идти на проверку каждому обучающемуся
@@ -297,6 +271,7 @@ BEGIN;
 CALL find_most_recommended_peers( 'ref');
 FETCH ALL FROM ref;
 CLOSE ref;
+COMMIT;
 END;
 
 
@@ -367,6 +342,7 @@ BEGIN;
 CALL calculate_block_participation( 'C', 'D','ref');
 FETCH ALL FROM ref;
 CLOSE ref;
+COMMIT;
 END;
 
 -- 10 Определить процент пиров, которые когда-либо успешно проходили проверку в свой день рождения
@@ -407,6 +383,7 @@ BEGIN;
 CALL calculate_birthday_check_stats( 'ref');
 FETCH ALL FROM ref;
 CLOSE ref;
+COMMIT;
 END;
 
 
@@ -489,6 +466,7 @@ BEGIN;
 CALL find_peers_completed_tasks( 'C2_SimpleBashUtils', 'C3_S21_String+', 'C4_S21_Math', 'ref' );
 FETCH ALL FROM ref;
 CLOSE ref;
+COMMIT;
 END;
 
 

@@ -48,43 +48,35 @@ CALL generate_tables();
 CALL drop_tables_with_prefix();
 
 -----------------ex02-----------------
-CREATE OR REPLACE PROCEDURE list_user_scalar_functions(OUT function_count INTEGER)
+CREATE OR REPLACE PROCEDURE list_user_scalar_functions(OUT function_count INTEGER, INOUT ref REFCURSOR)
     LANGUAGE plpgsql
 AS
 $$
-DECLARE
-    function_info TEXT;
 BEGIN
-    function_count = 0;
-    FOR function_info IN (SELECT r.routine_name || '(' || string_agg(p.parameter_name, ',') || ')' AS function_name
-                          FROM information_schema.routines r
-                                   JOIN information_schema.parameters p ON r.specific_name = p.specific_name
-                          WHERE r.specific_schema = 'public'
-                            AND r.data_type IN ('integer', 'smallint', 'bigint', 'real', 'numeric'
-                            , 'int', 'double precision', 'decimal')
-                            AND r.routine_type = 'FUNCTION'
-                          GROUP BY r.routine_name)
-        LOOP
-            function_count = function_count + 1;
-            RAISE NOTICE '%', function_info;
-        END LOOP;
+    SELECT COUNT(*) INTO function_count
+    FROM information_schema.routines r
+    WHERE r.specific_schema = 'public'
+      AND r.data_type IN ('integer', 'smallint', 'bigint', 'real', 'numeric', 'int', 'double precision', 'decimal')
+      AND r.routine_type = 'FUNCTION';
+
+    OPEN ref FOR
+        SELECT r.routine_name || '(' || string_agg(p.parameter_name, ',') || ')' AS function_name
+        FROM information_schema.routines r
+                 JOIN information_schema.parameters p ON r.specific_name = p.specific_name
+        WHERE r.specific_schema = 'public'
+          AND r.data_type IN ('integer', 'smallint', 'bigint', 'real', 'numeric', 'int', 'double precision', 'decimal')
+          AND r.routine_type = 'FUNCTION'
+        GROUP BY r.routine_name;
 END;
 $$;
 
 -- Пример использования
-CREATE OR REPLACE PROCEDURE list_functions_with_count()
-    LANGUAGE plpgsql
-AS
-$$
-DECLARE
-    function_count INTEGER;
-BEGIN
-    CALL list_user_scalar_functions(function_count);
-    RAISE NOTICE 'Найдено % функций', function_count;
+BEGIN;
+CALL list_user_scalar_functions(function_count := 0, ref := 'refcursor_name');
+FETCH ALL FROM refcursor_name;
+CLOSE refcursor_name;
+COMMIT;
 END;
-$$;
-
-CALL list_functions_with_count();
 
 CREATE OR REPLACE FUNCTION add_numbers(a INT, b INT)
     RETURNS INT
@@ -223,27 +215,27 @@ CREATE TRIGGER example1_after_insert_trigger2
 EXECUTE FUNCTION example1_after_insert();
 
 -----------------ex04-----------------
-CREATE OR REPLACE PROCEDURE search_functions_by_text(IN search_pattern TEXT)
+CREATE OR REPLACE PROCEDURE search_functions_by_text(IN search_pattern TEXT, INOUT ref REFCURSOR)
     LANGUAGE plpgsql
 AS
 $$
-DECLARE
-    function_info RECORD;
 BEGIN
-    FOR function_info IN
-        SELECT r.routine_name AS function_name, r.routine_type AS object_type
+    OPEN ref FOR
+        SELECT r.routine_name,
+               r.routine_type
         FROM information_schema.routines r
         WHERE r.specific_schema = 'public'
-          AND (r.data_type IS NULL
+          AND ((r.data_type IS NULL)
             OR r.data_type IN ('integer', 'smallint', 'bigint', 'real', 'numeric', 'int', 'double precision', 'decimal'))
           AND r.routine_type IN ('FUNCTION', 'PROCEDURE')
-          AND position(search_pattern IN r.routine_definition) > 0
-        LOOP
-            RAISE NOTICE 'Object Name: %, Object Type: %', function_info.function_name, function_info.object_type;
-        END LOOP;
+          AND position(search_pattern IN r.routine_definition) > 0;
 END;
 $$;
 
 -- Пример использования
-CALL search_functions_by_text('Peers');
-
+BEGIN;
+CALL search_functions_by_text('DROP TABLE IF', 'ref');
+FETCH ALL FROM ref;
+CLOSE ref;
+COMMIT;
+END;
