@@ -346,7 +346,7 @@ $$
     BEGIN
         path_dir := '/Users/amazomic/SQL2_Info21_v1.0-1/src/csv/';  -- поменять на свой путь
 
-        -- Очищаем другие таблицы перед импортом
+--         Очищаем другие таблицы перед импортом
         TRUNCATE TABLE checks CASCADE;
         TRUNCATE TABLE peers CASCADE;
         TRUNCATE TABLE tasks CASCADE;
@@ -373,15 +373,7 @@ $$
                 path_dir || 'Checks.csv'
             );
 
-        PERFORM import_from_csv(
-                'p2p',
-                path_dir || 'P2P.csv'
-            );
 
-        PERFORM import_from_csv(
-                'verter',
-                path_dir || 'Verter.csv'
-            );
 
         PERFORM import_from_csv(
                 'transferredpoints',
@@ -407,6 +399,20 @@ $$
                 'timetracking',
                 path_dir || 'TimeTracking.csv'
             );
+
+
+
+                PERFORM import_from_csv(
+                'p2p',
+                path_dir || 'P2P.csv'
+            );
+
+        PERFORM import_from_csv(
+                'verter',
+                path_dir || 'Verter.csv'
+            );
+
+
 
     END
 $$;

@@ -10,15 +10,14 @@ AS
 $$
 BEGIN
     RETURN QUERY
-        SELECT
-            LEAST(tp1.checkingPeer, tp1.checkedPeer) AS Peer1,
-            GREATEST(tp1.checkingPeer, tp1.checkedPeer) AS Peer2,
-            SUM(
-                    CASE
-                        WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.pointsAmount
-                        ELSE -tp1.pointsAmount
-                        END
-                ) AS PointsAmount
+        SELECT LEAST(tp1.checkingPeer, tp1.checkedPeer)    AS Peer1,
+               GREATEST(tp1.checkingPeer, tp1.checkedPeer) AS Peer2,
+               SUM(
+                       CASE
+                           WHEN tp1.checkingPeer < tp1.checkedPeer THEN tp1.pointsAmount
+                           ELSE -tp1.pointsAmount
+                           END
+                   )                                       AS PointsAmount
         FROM transferredPoints tp1
                  LEFT JOIN transferredPoints tp2
                            ON tp1.checkingPeer = tp2.checkedPeer
@@ -99,15 +98,14 @@ BEGIN
     OPEN ref FOR
         SELECT Subquery.Peer,
                SUM(Subquery.PointsChange) AS PointsChange
-        FROM (SELECT tp.CheckingPeer      AS Peer,
-                     SUM(tp.PointsAmount) AS PointsChange
+        FROM (SELECT tp.CheckingPeer AS Peer,
+                     tp.PointsAmount AS PointsChange
               FROM TransferredPoints tp
-              GROUP BY tp.CheckingPeer
+
               UNION ALL
-              SELECT tp.CheckedPeer        AS Peer,
-                     -SUM(tp.PointsAmount) AS PointsChange
-              FROM TransferredPoints tp
-              GROUP BY tp.CheckedPeer) AS Subquery
+              SELECT tp.CheckedPeer   AS Peer,
+                     -tp.PointsAmount AS PointsChange
+              FROM TransferredPoints tp) AS Subquery
         GROUP BY Subquery.Peer
         ORDER BY PointsChange DESC;
 
@@ -116,7 +114,7 @@ $$ LANGUAGE plpgsql;
 
 -- Usage:
 BEGIN;
-CALL calculate_peer_points_change( 'ref');
+CALL calculate_peer_points_change('ref');
 FETCH ALL FROM ref;
 CLOSE ref;
 COMMIT;
@@ -161,15 +159,13 @@ AS
 $$
 BEGIN
     OPEN ref FOR
-        WITH TaskRanks AS (
-            SELECT DATE(c.Date) AS "Day",
-                   t.Title AS "Task",
-                   COUNT(*) AS TaskCount,
-                   RANK() OVER (PARTITION BY DATE(c.Date) ORDER BY COUNT(*) DESC) AS TaskRank
-            FROM Checks c
-                     JOIN Tasks t ON c.Task = t.Title
-            GROUP BY "Day", "Task"
-        )
+        WITH TaskRanks AS (SELECT DATE(c.Date)                                                   AS "Day",
+                                  t.Title                                                        AS "Task",
+                                  COUNT(*)                                                       AS TaskCount,
+                                  RANK() OVER (PARTITION BY DATE(c.Date) ORDER BY COUNT(*) DESC) AS TaskRank
+                           FROM Checks c
+                                    JOIN Tasks t ON c.Task = t.Title
+                           GROUP BY "Day", "Task")
         SELECT "Day", "Task"
         FROM TaskRanks
         WHERE TaskRank = 1;
@@ -196,19 +192,15 @@ BEGIN
                c.Date AS completion_date
         FROM Checks c
         WHERE c.Task = (SELECT MAX(Title)
-        FROM Tasks
-        WHERE Title LIKE (block_name || '_%'))
-          AND c.id IN (
-            SELECT p2p."Check"
-            FROM P2P
-            WHERE p2p.State = 'Success'
-        )
-          AND NOT EXISTS (
-            SELECT 1
-            FROM Verter v
-            WHERE v."Check" = c.ID
-              AND v.State = 'Failure'
-        )
+                        FROM Tasks
+                        WHERE Title LIKE (block_name || '_%'))
+          AND c.id IN (SELECT p2p."Check"
+                       FROM P2P
+                       WHERE p2p.State = 'Success')
+          AND NOT EXISTS (SELECT 1
+                          FROM Verter v
+                          WHERE v."Check" = c.ID
+                            AND v.State = 'Failure')
         ORDER BY c.Date DESC, c.Peer;
 
 END;
@@ -227,48 +219,41 @@ CREATE OR REPLACE PROCEDURE find_most_recommended_peers(INOUT ref REFCURSOR)
 AS
 $$
 DECLARE
-    popular_peer VARCHAR;
+    popular_peer        VARCHAR;
     second_popular_peer VARCHAR;
 BEGIN
     SELECT RecommendedPeer
     INTO popular_peer
-    FROM (
-             SELECT RecommendedPeer, COUNT(*) AS recommendation_count
-             FROM Recommendations
-             GROUP BY RecommendedPeer
-             ORDER BY COUNT(*) DESC
-             LIMIT 2
-         ) AS subquery
+    FROM (SELECT RecommendedPeer, COUNT(*) AS recommendation_count
+          FROM Recommendations
+          GROUP BY RecommendedPeer
+          ORDER BY COUNT(*) DESC
+          LIMIT 2) AS subquery
     ORDER BY recommendation_count DESC
     LIMIT 1;
 
     SELECT RecommendedPeer
     INTO second_popular_peer
-    FROM (
-             SELECT RecommendedPeer, COUNT(*) AS recommendation_count
-             FROM Recommendations
-             GROUP BY RecommendedPeer
-             ORDER BY COUNT(*) DESC
-             LIMIT 2
-         ) AS subquery
+    FROM (SELECT RecommendedPeer, COUNT(*) AS recommendation_count
+          FROM Recommendations
+          GROUP BY RecommendedPeer
+          ORDER BY COUNT(*) DESC
+          LIMIT 2) AS subquery
     ORDER BY recommendation_count DESC
-    OFFSET 1
-        LIMIT 1;
+    OFFSET 1 LIMIT 1;
 
     OPEN ref FOR
-        SELECT
-            p.nickname AS Peer,
-            CASE
-                WHEN p.nickname = popular_peer THEN second_popular_peer
-                ELSE popular_peer
-                END AS RecommendedPeer
-        FROM
-            Peers p;
+        SELECT p.nickname AS Peer,
+               CASE
+                   WHEN p.nickname = popular_peer THEN second_popular_peer
+                   ELSE popular_peer
+                   END    AS RecommendedPeer
+        FROM Peers p;
 END;
 $$ LANGUAGE plpgsql;
 
 BEGIN;
-CALL find_most_recommended_peers( 'ref');
+CALL find_most_recommended_peers('ref');
 FETCH ALL FROM ref;
 CLOSE ref;
 COMMIT;
@@ -288,20 +273,18 @@ CREATE OR REPLACE PROCEDURE calculate_block_participation(
 AS
 $$
 DECLARE
-    block1_started DECIMAL;
-    block2_started DECIMAL;
-    both_blocks_started DECIMAL;
+    block1_started        DECIMAL;
+    block2_started        DECIMAL;
+    both_blocks_started   DECIMAL;
     neither_block_started DECIMAL;
 BEGIN
-    -- Рассчитываем процент пиров, приступивших только к блоку 1
     SELECT (
-                   (COUNT(DISTINCT c.Peer) * 100.0) / (SELECT COUNT(DISTINCT Peer) FROM Checks)
-               )
+               COUNT(DISTINCT c.Peer) * 100.0) / (SELECT COUNT(DISTINCT Peer)
+                                                  FROM Checks)
     INTO block1_started
     FROM Checks c
     WHERE c.Task LIKE block1_name || '%';
 
-    -- Рассчитываем процент пиров, приступивших только к блоку 2
     SELECT (
                    (COUNT(DISTINCT c.Peer) * 100.0) / (SELECT COUNT(DISTINCT Peer) FROM Checks)
                )
@@ -309,37 +292,37 @@ BEGIN
     FROM Checks c
     WHERE c.Task LIKE block2_name || '%';
 
-    -- Рассчитываем процент пиров, приступивших к обоим блокам
     SELECT (
                    (COUNT(DISTINCT c.Peer) * 100.0) / (SELECT COUNT(DISTINCT Peer) FROM Checks)
                )
     INTO both_blocks_started
     FROM Checks c
-    WHERE c.Task LIKE block1_name || '%' AND c.Peer IN (
-        SELECT DISTINCT Peer
-        FROM Checks
-        WHERE Task LIKE block2_name || '%'
-    );
+    WHERE c.Task LIKE block1_name || '%'
+      AND c.Peer IN (SELECT DISTINCT Peer
+                     FROM Checks
+                     WHERE Task LIKE block2_name || '%');
 
-    -- Рассчитываем процент пиров, не приступивших ни к одному блоку
     SELECT (
-                   (COUNT(DISTINCT p.Nickname) * 100.0 - COUNT(DISTINCT c.Peer) * 100.0) / (SELECT COUNT(DISTINCT Peer) FROM Checks)
+                   (COUNT(DISTINCT p.Nickname) * 100.0 - COUNT(DISTINCT c.Peer) * 100.0) /
+                   (SELECT COUNT(DISTINCT Peer) FROM Checks)
                )
     INTO neither_block_started
     FROM Peers p
              LEFT JOIN Checks c ON p.Nickname = c.Peer
     WHERE c.Peer IS NULL;
 
-    -- Открываем курсор для вывода результата
     OPEN ref FOR
-        SELECT block1_started, block2_started, both_blocks_started, neither_block_started;
+        SELECT ROUND(block1_started)        AS StartedBlock1,
+               ROUND(block2_started)        AS StartedBlock2,
+               ROUND(both_blocks_started)   AS StartedBothBlocks,
+               ROUND(neither_block_started) AS DidntStartAnyBlock;
 
 END;
 $$ LANGUAGE plpgsql;
 
 -- Usage:
 BEGIN;
-CALL calculate_block_participation( 'C', 'D','ref');
+CALL calculate_block_participation('C', 'D', 'ref');
 FETCH ALL FROM ref;
 CLOSE ref;
 COMMIT;
@@ -352,13 +335,12 @@ CREATE OR REPLACE PROCEDURE calculate_birthday_check_stats(
 AS
 $$
 DECLARE
-    total_people INT;
+    total_people            INT;
     total_successful_checks INT;
 BEGIN
     -- Получаем сумму людей и сумму успешных проверок в День Рождения
-    SELECT
-        COUNT(DISTINCT p.Nickname),
-        SUM(CASE WHEN p2p.State = 'Success' AND (verter.State IS NULL OR verter.State = 'Success') THEN 1 ELSE 0 END)
+    SELECT COUNT(DISTINCT p.Nickname),
+           SUM(CASE WHEN p2p.State = 'Success' AND (verter.State IS NULL OR verter.State = 'Success') THEN 1 ELSE 0 END)
     INTO
         total_people,
         total_successful_checks
@@ -370,9 +352,8 @@ BEGIN
       AND EXTRACT(DAY FROM c.Date) = EXTRACT(DAY FROM p.Birthday);
 
     OPEN ref FOR
-        SELECT
-            ROUND((total_successful_checks * 100.0) / total_people) AS SuccessfulChecks,
-            100 - ROUND((total_successful_checks * 100.0) / total_people) AS UnsuccessfulChecks;
+        SELECT ROUND((total_successful_checks * 100.0) / total_people)       AS SuccessfulChecks,
+               100 - ROUND((total_successful_checks * 100.0) / total_people) AS UnsuccessfulChecks;
 
 END;
 $$ LANGUAGE plpgsql;
@@ -380,95 +361,11 @@ $$ LANGUAGE plpgsql;
 
 -- Usage:
 BEGIN;
-CALL calculate_birthday_check_stats( 'ref');
+CALL calculate_birthday_check_stats('ref');
 FETCH ALL FROM ref;
 CLOSE ref;
 COMMIT;
 END;
-
-
-
-
--- 11 пределить всех пиров, которые сдали заданные задания 1 и 2, но не сдали задание 3
-CREATE OR REPLACE PROCEDURE find_peers_completed_tasks(
-    IN task1_name VARCHAR(255),
-    IN task2_name VARCHAR(255),
-    IN task3_name VARCHAR(255),
-    INOUT ref REFCURSOR
-)
-AS
-$$
-BEGIN
-    -- Создаем временные таблицы для каждого задания
-    CREATE TEMP TABLE IF NOT EXISTS successful_task1_completed (
-        Peer VARCHAR(50)
-    );
-    CREATE TEMP TABLE IF NOT EXISTS successful_task2_completed (
-        Peer VARCHAR(50)
-    );
-    CREATE TEMP TABLE IF NOT EXISTS successful_task3_completed (
-        Peer VARCHAR(50)
-    );
-
-    -- Очищаем временные таблицы перед вставкой новых данных
-    TRUNCATE TABLE successful_task1_completed;
-    TRUNCATE TABLE successful_task2_completed;
-    TRUNCATE TABLE successful_task3_completed;
-
-    -- Получаем список пиров, успешно выполнивших первое задание
-    INSERT INTO successful_task1_completed (Peer)
-    SELECT DISTINCT c.Peer
-    FROM Checks c
-             JOIN Tasks t ON c.Task = t.Title
-             LEFT JOIN P2P p2p ON c.ID = p2p."Check" AND p2p.State = 'Success'
-             LEFT JOIN Verter verter ON c.ID = verter."Check"
-    WHERE t.Title = task1_name
-      AND (p2p.State = 'Success' AND (verter.State IS NULL OR verter.State = 'Success'));
-
-    -- Получаем список пиров, успешно выполнивших второе задание
-    INSERT INTO successful_task2_completed (Peer)
-    SELECT DISTINCT c.Peer
-    FROM Checks c
-             JOIN Tasks t ON c.Task = t.Title
-             LEFT JOIN P2P p2p ON c.ID = p2p."Check" AND p2p.State = 'Success'
-             LEFT JOIN Verter verter ON c.ID = verter."Check"
-    WHERE t.Title = task2_name
-      AND (p2p.State = 'Success' AND (verter.State IS NULL OR verter.State = 'Success'));
-
-    -- Получаем список пиров, успешно выполнивших третье задание
-    INSERT INTO successful_task3_completed (Peer)
-    SELECT DISTINCT c.Peer
-    FROM Checks c
-             JOIN Tasks t ON c.Task = t.Title
-             LEFT JOIN P2P p2p ON c.ID = p2p."Check" AND p2p.State = 'Success'
-             LEFT JOIN Verter verter ON c.ID = verter."Check"
-    WHERE t.Title = task3_name
-      AND (p2p.State = 'Success' AND (verter.State IS NULL OR verter.State = 'Success'));
-
-    -- Получаем итоговый список пиров без пустых строк
-    OPEN ref FOR
-        SELECT
-            successful_task1_completed.Peer AS "Список пиров"
-        FROM successful_task1_completed
-                 FULL OUTER JOIN successful_task2_completed
-                                 ON successful_task1_completed.Peer = successful_task2_completed.Peer
-                 FULL OUTER JOIN successful_task3_completed
-                                 ON successful_task1_completed.Peer = successful_task3_completed.Peer
-        WHERE successful_task1_completed.Peer IS NOT NULL
-          AND successful_task2_completed.Peer IS NOT NULL
-          AND successful_task3_completed.Peer IS NULL;
-END;
-$$ LANGUAGE plpgsql;
-
-
--- Usage:
-BEGIN;
-CALL find_peers_completed_tasks( 'C2_SimpleBashUtils', 'C3_S21_String+', 'C4_S21_Math', 'ref' );
-FETCH ALL FROM ref;
-CLOSE ref;
-COMMIT;
-END;
-
 
 
 
@@ -483,47 +380,39 @@ AS
 $$
 BEGIN
     OPEN ref FOR
-WITH task_filtered AS (
-    SELECT c.id,
-           c.peer,
-           c.task,
-           p.state AS p_state,
-           v.state AS v_state
-    FROM Checks c
-             LEFT JOIN P2P p ON c.ID = p."Check"
-             LEFT JOIN Verter v ON c.ID = v."Check"
-    WHERE c.task IN (task1, task2, task3)
-      AND p.state <> 'Start'
-)
+        WITH task_filtered AS (SELECT c.id,
+                                      c.peer,
+                                      c.task,
+                                      p.state AS p_state,
+                                      v.state AS v_state
+                               FROM Checks c
+                                        LEFT JOIN P2P p ON c.ID = p."Check"
+                                        LEFT JOIN Verter v ON c.ID = v."Check"
+                               WHERE c.task IN (task1, task2, task3)
+                                 AND p.state <> 'Start')
 
-SELECT DISTINCT p.nickname
-FROM peers p
-WHERE EXISTS (
-    SELECT 1
-    FROM task_filtered tf1
-    WHERE tf1.peer = p.nickname
-      AND tf1.task = task1
-      AND (tf1.p_state = 'Success' AND (tf1.v_state IS NULL OR tf1.v_state = 'Success'))
-)
-  AND EXISTS (
-    SELECT 1
-    FROM task_filtered tf2
-    WHERE tf2.peer = p.nickname
-      AND tf2.task = task2
-      AND (tf2.p_state = 'Success' AND (tf2.v_state IS NULL OR tf2.v_state = 'Success'))
-)
-  AND NOT EXISTS (
-    SELECT 1
-    FROM task_filtered tf3
-    WHERE tf3.peer = p.nickname
-      AND tf3.task = task3
-      AND (tf3.p_state = 'Failure' OR tf3.v_state = 'Failure')
-);
+        SELECT DISTINCT p.nickname
+        FROM peers p
+        WHERE EXISTS (SELECT 1
+                      FROM task_filtered tf1
+                      WHERE tf1.peer = p.nickname
+                        AND tf1.task = task1
+                        AND (tf1.p_state = 'Success' AND (tf1.v_state IS NULL OR tf1.v_state = 'Success')))
+          AND EXISTS (SELECT 1
+                      FROM task_filtered tf2
+                      WHERE tf2.peer = p.nickname
+                        AND tf2.task = task2
+                        AND (tf2.p_state = 'Success' AND (tf2.v_state IS NULL OR tf2.v_state = 'Success')))
+          AND NOT EXISTS (SELECT 1
+                          FROM task_filtered tf3
+                          WHERE tf3.peer = p.nickname
+                            AND tf3.task = task3
+                            AND (tf3.p_state = 'Failure' OR tf3.v_state = 'Failure'));
 END;
 $$ LANGUAGE plpgsql;
 
 BEGIN;
-CALL find_peers_completed_tasks('C2_SimpleBashUtils', 'D01_Linux', 'D02_LinuxNetwork', 'ref');
+CALL find_peers_completed_tasks('C2_SimpleBashUtils', 'C3_S21_String+', 'C4_S21_Math', 'ref');
 FETCH ALL FROM ref;
 CLOSE ref;
 COMMIT;

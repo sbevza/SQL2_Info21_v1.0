@@ -11,6 +11,16 @@ AS $$
 DECLARE
     check_id BIGINT;
 BEGIN
+
+    SELECT c.id INTO check_id
+    FROM checks c
+             JOIN p2p p ON p."Check" = c.id
+    WHERE p.state = 'Start'
+      AND c.task = task_name
+      AND c.date = CURRENT_DATE
+      AND p.checkingPeer = checking_peer
+      AND c.peer = checked_peer;
+
     IF state = 'Start' THEN
         IF NOT EXISTS (SELECT 1 FROM tasks WHERE title = task_name) THEN
             RAISE EXCEPTION 'Task % not found', task_name;
@@ -23,6 +33,10 @@ BEGIN
             RAISE EXCEPTION 'Checking peer % not found', checking_peer;
         END IF;
 
+        IF check_id IS NOT NULL THEN
+            RAISE EXCEPTION 'Check already started';
+        END IF;
+
         INSERT INTO checks (peer, task, date)
         VALUES (checked_peer, task_name, CURRENT_DATE)
         RETURNING id INTO check_id;
@@ -32,12 +46,7 @@ BEGIN
 
     ELSIF state IN ('Success', 'Failure') THEN
 
-        SELECT c.id INTO check_id
-        FROM checks c
-                 JOIN p2p p ON p."Check" = c.id
-        WHERE p.state = 'Start'
-          AND c.task = task_name
-          AND p.checkingPeer = checking_peer;
+
 
         IF check_id IS NULL THEN
             RAISE EXCEPTION 'No started check found for %, %, %',
@@ -134,6 +143,10 @@ CREATE OR REPLACE TRIGGER trg_p2p_add_prp
 EXECUTE FUNCTION fnc_trg_p2p_add_prp();
 
 -- Пример использования
+CALL add_p2p('john', 'alice', 'D01_Linux', 'Start', '10:00');
+CALL add_p2p('john', 'alice', 'D02_LinuxNetwork', 'Start', '10:00');
+
+
 INSERT INTO P2P ("Check", checkingpeer, state, time)
 VALUES (7, 'john', 'Start', '11:00');
 SELECT *
@@ -157,7 +170,8 @@ BEGIN
         FROM Checks ch
                  LEFT JOIN Verter v ON v."Check" = ch.ID
                  LEFT JOIN P2P p ON p."Check" = ch.ID
-        WHERE (v.State = 'Success' OR v.State IS NULL) AND p.State = 'Success'
+        WHERE ((v.State = 'Success' OR v.State IS NULL) AND p.State = 'Success')
+        AND ch.id = NEW."Check"
        ) = 0
     THEN
         RAISE EXCEPTION 'No successful checks';
@@ -174,8 +188,10 @@ CREATE OR REPLACE TRIGGER trg_xp_check_row
 EXECUTE FUNCTION fnc_trg_xp_check_row();
 
 -- Пример использования
-INSERT INTO XP ("Check", xpamount) VALUES (11, 1000); -- Error
-INSERT INTO XP ("Check", xpamount) VALUES (11, 300);
+INSERT INTO XP ("Check", xpamount) VALUES (11, 1000); -- Error превышения  xp
+INSERT INTO XP ("Check", xpamount) VALUES (5, 100);  -- Error не пройденной проверки
+INSERT INTO XP ("Check", xpamount) VALUES (7, 150);  -- Error не пройден вертер
+INSERT INTO XP ("Check", xpamount) VALUES (11, 150);
 
 -- SELECT * FROM xp
 -- WHERE xpamount = 300;
